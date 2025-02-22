@@ -3,6 +3,11 @@ module dos_collection::collection;
 use dos_bucket::bucket::Bucket;
 use std::string::String;
 
+//=== Aliases ===
+
+public use fun collection_admin_cap_id as CollectionAdminCap.id;
+public use fun collection_admin_cap_collection_id as CollectionAdminCap.collection_id;
+
 //=== Structs ===
 
 public struct COLLECTION has drop {}
@@ -109,4 +114,12 @@ public fun supply<T>(self: &Collection<T>): u64 {
         CollectionKind::CAPPED { supply, .. } => supply,
         CollectionKind::UNCAPPED { supply, .. } => supply,
     }
+}
+
+public fun collection_admin_cap_id(self: &CollectionAdminCap): ID {
+    self.id.to_inner()
+}
+
+public fun collection_admin_cap_collection_id(self: &CollectionAdminCap): ID {
+    self.collection_id
 }
