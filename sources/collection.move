@@ -111,8 +111,8 @@ public fun kind<T>(self: &Collection<T>): CollectionKind {
     self.kind
 }
 
-public fun name<T>(self: &Collection<T>): &String {
-    &self.name
+public fun name<T>(self: &Collection<T>): String {
+    self.name
 }
 
 public fun supply<T>(self: &Collection<T>): u64 {
@@ -129,12 +129,12 @@ public fun total_supply<T>(self: &Collection<T>): u64 {
     }
 }
 
-public fun unit_description<T>(self: &Collection<T>): &String {
-    &self.unit_description
+public fun unit_description<T>(self: &Collection<T>): String {
+    self.unit_description
 }
 
-public fun unit_name<T>(self: &Collection<T>): &String {
-    &self.unit_name
+public fun unit_name<T>(self: &Collection<T>): String {
+    self.unit_name
 }
 
 public fun collection_admin_cap_id(self: &CollectionAdminCap): ID {
