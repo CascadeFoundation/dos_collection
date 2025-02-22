@@ -1,12 +1,8 @@
 module dos_collection::collection;
 
 use dos_bucket::bucket::Bucket;
+use dos_collection::collection_admin_cap::{Self, CollectionAdminCap};
 use std::string::String;
-
-//=== Aliases ===
-
-public use fun collection_admin_cap_id as CollectionAdminCap.id;
-public use fun collection_admin_cap_collection_id as CollectionAdminCap.collection_id;
 
 //=== Structs ===
 
@@ -22,11 +18,6 @@ public struct Collection<phantom T> has key {
     bucket: Bucket,
 }
 
-public struct CollectionAdminCap has key, store {
-    id: UID,
-    collection_id: ID,
-}
-
 public struct ShareCollectionPromise has key {
     id: UID,
     collection_id: ID,
@@ -36,8 +27,6 @@ public enum CollectionKind has copy, drop, store {
     CAPPED { supply: u64, total_supply: u64 },
     UNCAPPED { supply: u64 },
 }
-
-const EInvalidCollectionAdminCap: u64 = 0;
 
 //=== Public Functions ===
 
@@ -60,10 +49,7 @@ public fun new<T>(
         bucket: bucket,
     };
 
-    let collection_admin_cap = CollectionAdminCap {
-        id: object::new(ctx),
-        collection_id: collection.id(),
-    };
+    let collection_admin_cap = collection_admin_cap::new(collection.id(), ctx);
 
     let promise = ShareCollectionPromise {
         id: object::new(ctx),
@@ -93,7 +79,7 @@ public fun bucket<T>(self: &Collection<T>): &Bucket {
 }
 
 public fun bucket_mut<T>(cap: &CollectionAdminCap, self: &mut Collection<T>): &mut Bucket {
-    assert!(cap.collection_id == self.id(), EInvalidCollectionAdminCap);
+    cap.authorize(self.id());
     &mut self.bucket
 }
 
@@ -135,12 +121,4 @@ public fun unit_description<T>(self: &Collection<T>): String {
 
 public fun unit_name<T>(self: &Collection<T>): String {
     self.unit_name
-}
-
-public fun collection_admin_cap_id(self: &CollectionAdminCap): ID {
-    self.id.to_inner()
-}
-
-public fun collection_admin_cap_collection_id(self: &CollectionAdminCap): ID {
-    self.collection_id
 }
