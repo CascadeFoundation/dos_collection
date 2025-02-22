@@ -19,8 +19,8 @@ public struct ShareCollectionPromise has key {
 }
 
 public enum CollectionKind has copy, drop, store {
-    CAPPED { total_supply: u64 },
-    UNCAPPED,
+    CAPPED { supply: u64, total_supply: u64 },
+    UNCAPPED { supply: u64 },
 }
 
 //=== Public Functions ===
@@ -54,11 +54,11 @@ public fun share<T>(self: Collection<T>, promise: ShareCollectionPromise) {
 }
 
 public fun new_capped_kind(total_supply: u64): CollectionKind {
-    CollectionKind::CAPPED { total_supply }
+    CollectionKind::CAPPED { supply: 0, total_supply: total_supply }
 }
 
 public fun new_uncapped_kind(): CollectionKind {
-    CollectionKind::UNCAPPED
+    CollectionKind::UNCAPPED { supply: 0 }
 }
 
 //=== View Functions ===
