@@ -1,5 +1,6 @@
 module dos_collection::collection;
 
+use dos_bucket::bucket::Bucket;
 use std::string::String;
 
 //=== Structs ===
@@ -11,6 +12,7 @@ public struct Collection<phantom T> has key {
     kind: CollectionKind,
     name: String,
     description: String,
+    bucket: Bucket,
 }
 
 public struct ShareCollectionPromise has key {
@@ -29,13 +31,15 @@ public fun new<T>(
     kind: CollectionKind,
     name: String,
     description: String,
+    bucket: Bucket,
     ctx: &mut TxContext,
 ): (Collection<T>, ShareCollectionPromise) {
     let collection = Collection {
         id: object::new(ctx),
-        kind,
-        name,
-        description,
+        kind: kind,
+        name: name,
+        description: description,
+        bucket: bucket,
     };
 
     let promise = ShareCollectionPromise {
@@ -61,6 +65,14 @@ public fun new_uncapped_kind(): CollectionKind {
     CollectionKind::UNCAPPED { supply: 0 }
 }
 
+public fun bucket<T>(self: &Collection<T>): &Bucket {
+    &self.bucket
+}
+
+public fun bucket_mut<T>(self: &mut Collection<T>): &mut Bucket {
+    &mut self.bucket
+}
+
 //=== View Functions ===
 
 public fun id<T>(self: &Collection<T>): ID {
@@ -77,4 +89,11 @@ public fun name<T>(self: &Collection<T>): &String {
 
 public fun kind<T>(self: &Collection<T>): CollectionKind {
     self.kind
+}
+
+public fun supply<T>(self: &Collection<T>): u64 {
+    match (self.kind) {
+        CollectionKind::CAPPED { supply, .. } => supply,
+        CollectionKind::UNCAPPED { supply, .. } => supply,
+    }
 }
