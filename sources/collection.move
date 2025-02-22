@@ -15,6 +15,11 @@ public struct Collection<phantom T> has key {
     bucket: Bucket,
 }
 
+public struct CollectionAdminCap has key, store {
+    id: UID,
+    collection_id: ID,
+}
+
 public struct ShareCollectionPromise has key {
     id: UID,
     collection_id: ID,
@@ -25,6 +30,8 @@ public enum CollectionKind has copy, drop, store {
     UNCAPPED { supply: u64 },
 }
 
+const EInvalidCollectionAdminCap: u64 = 0;
+
 //=== Public Functions ===
 
 public fun new<T>(
@@ -33,7 +40,7 @@ public fun new<T>(
     description: String,
     bucket: Bucket,
     ctx: &mut TxContext,
-): (Collection<T>, ShareCollectionPromise) {
+): (Collection<T>, CollectionAdminCap, ShareCollectionPromise) {
     let collection = Collection {
         id: object::new(ctx),
         kind: kind,
@@ -42,12 +49,17 @@ public fun new<T>(
         bucket: bucket,
     };
 
+    let collection_admin_cap = CollectionAdminCap {
+        id: object::new(ctx),
+        collection_id: collection.id(),
+    };
+
     let promise = ShareCollectionPromise {
         id: object::new(ctx),
         collection_id: collection.id(),
     };
 
-    (collection, promise)
+    (collection, collection_admin_cap, promise)
 }
 
 public fun share<T>(self: Collection<T>, promise: ShareCollectionPromise) {
@@ -69,7 +81,8 @@ public fun bucket<T>(self: &Collection<T>): &Bucket {
     &self.bucket
 }
 
-public fun bucket_mut<T>(self: &mut Collection<T>): &mut Bucket {
+public fun bucket_mut<T>(cap: &CollectionAdminCap, self: &mut Collection<T>): &mut Bucket {
+    assert!(cap.collection_id == self.id(), EInvalidCollectionAdminCap);
     &mut self.bucket
 }
 
