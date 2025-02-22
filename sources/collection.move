@@ -107,12 +107,12 @@ public fun description<T>(self: &Collection<T>): &String {
     &self.description
 }
 
-public fun name<T>(self: &Collection<T>): &String {
-    &self.name
-}
-
 public fun kind<T>(self: &Collection<T>): CollectionKind {
     self.kind
+}
+
+public fun name<T>(self: &Collection<T>): &String {
+    &self.name
 }
 
 public fun supply<T>(self: &Collection<T>): u64 {
@@ -120,6 +120,21 @@ public fun supply<T>(self: &Collection<T>): u64 {
         CollectionKind::CAPPED { supply, .. } => supply,
         CollectionKind::UNCAPPED { supply, .. } => supply,
     }
+}
+
+public fun total_supply<T>(self: &Collection<T>): u64 {
+    match (self.kind) {
+        CollectionKind::CAPPED { total_supply, .. } => total_supply,
+        CollectionKind::UNCAPPED { .. } => 18446744073709551615,
+    }
+}
+
+public fun unit_description<T>(self: &Collection<T>): &String {
+    &self.unit_description
+}
+
+public fun unit_name<T>(self: &Collection<T>): &String {
+    &self.unit_name
 }
 
 public fun collection_admin_cap_id(self: &CollectionAdminCap): ID {
