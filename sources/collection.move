@@ -17,6 +17,8 @@ public struct Collection<phantom T> has key {
     kind: CollectionKind,
     name: String,
     description: String,
+    unit_name: String,
+    unit_description: String,
     bucket: Bucket,
 }
 
@@ -43,6 +45,8 @@ public fun new<T>(
     kind: CollectionKind,
     name: String,
     description: String,
+    unit_name: String,
+    unit_description: String,
     bucket: Bucket,
     ctx: &mut TxContext,
 ): (Collection<T>, CollectionAdminCap, ShareCollectionPromise) {
@@ -51,6 +55,8 @@ public fun new<T>(
         kind: kind,
         name: name,
         description: description,
+        unit_name: unit_name,
+        unit_description: unit_description,
         bucket: bucket,
     };
 
