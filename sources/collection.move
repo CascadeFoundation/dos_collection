@@ -83,6 +83,16 @@ public fun bucket_mut<T>(cap: &CollectionAdminCap, self: &mut Collection<T>): &m
     &mut self.bucket
 }
 
+public fun uid<T>(self: &Collection<T>, cap: &CollectionAdminCap): &UID {
+    cap.authorize(self.id());
+    &self.id
+}
+
+public fun uid_mut<T>(self: &mut Collection<T>, cap: &CollectionAdminCap): &mut UID {
+    cap.authorize(self.id());
+    &mut self.id
+}
+
 //=== View Functions ===
 
 public fun id<T>(self: &Collection<T>): ID {
