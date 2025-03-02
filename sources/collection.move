@@ -1,8 +1,15 @@
 module dos_collection::collection;
 
-use dos_bucket::bucket::Bucket;
-use dos_collection::collection_admin_cap::{Self, CollectionAdminCap};
+use dos_bucket::bucket::{Self, BucketAdminCap};
 use std::string::String;
+use sui::transfer::Receiving;
+use sui::types;
+
+//=== Aliases ===
+
+public use fun collection_admin_cap_authorize as CollectionAdminCap.authorize;
+public use fun collection_admin_cap_collection_id as CollectionAdminCap.collection_id;
+public use fun collection_admin_cap_id as CollectionAdminCap.id;
 
 //=== Structs ===
 
@@ -13,9 +20,12 @@ public struct Collection<phantom T> has key {
     kind: CollectionKind,
     name: String,
     description: String,
-    unit_name: String,
-    unit_description: String,
-    bucket: Bucket,
+    bucket_id: ID,
+}
+
+public struct CollectionAdminCap has key, store {
+    id: UID,
+    collection_id: ID,
 }
 
 public struct ShareCollectionPromise has key {
@@ -28,35 +38,55 @@ public enum CollectionKind has copy, drop, store {
     UNCAPPED { supply: u64 },
 }
 
+//=== Errors ===
+
+const EInvalidWitness: u64 = 0;
+const EInvalidCollection: u64 = 1;
+
 //=== Public Functions ===
 
-public fun new<T>(
+public fun new<T: drop>(
+    witness: T,
     kind: CollectionKind,
     name: String,
     description: String,
-    unit_name: String,
-    unit_description: String,
-    bucket: Bucket,
     ctx: &mut TxContext,
-): (Collection<T>, CollectionAdminCap, ShareCollectionPromise) {
-    let collection = Collection {
+): (Collection<T>, CollectionAdminCap, ShareCollectionPromise, BucketAdminCap) {
+    assert!(types::is_one_time_witness(&witness), EInvalidWitness);
+
+    let (bucket, bucket_admin_cap) = bucket::new(ctx);
+
+    let collection = Collection<T> {
         id: object::new(ctx),
         kind: kind,
         name: name,
         description: description,
-        unit_name: unit_name,
-        unit_description: unit_description,
-        bucket: bucket,
+        bucket_id: bucket.id(),
     };
 
-    let collection_admin_cap = collection_admin_cap::new(collection.id(), ctx);
+    let collection_admin_cap = CollectionAdminCap {
+        id: object::new(ctx),
+        collection_id: collection.id(),
+    };
 
     let promise = ShareCollectionPromise {
         id: object::new(ctx),
         collection_id: collection.id(),
     };
 
-    (collection, collection_admin_cap, promise)
+    transfer::public_share_object(bucket);
+
+    (collection, collection_admin_cap, promise, bucket_admin_cap)
+}
+
+public fun receive<T: key + store>(
+    self: &mut Collection<T>,
+    cap: &CollectionAdminCap,
+    obj_to_receive: Receiving<T>,
+): T {
+    cap.authorize(self.id());
+
+    transfer::public_receive(&mut self.id, obj_to_receive)
 }
 
 public fun share<T>(self: Collection<T>, promise: ShareCollectionPromise) {
@@ -74,22 +104,15 @@ public fun new_uncapped_kind(): CollectionKind {
     CollectionKind::UNCAPPED { supply: 0 }
 }
 
-public fun bucket<T>(self: &Collection<T>): &Bucket {
-    &self.bucket
-}
-
-public fun bucket_mut<T>(cap: &CollectionAdminCap, self: &mut Collection<T>): &mut Bucket {
-    cap.authorize(self.id());
-    &mut self.bucket
-}
-
 public fun uid<T>(self: &Collection<T>, cap: &CollectionAdminCap): &UID {
     cap.authorize(self.id());
+
     &self.id
 }
 
 public fun uid_mut<T>(self: &mut Collection<T>, cap: &CollectionAdminCap): &mut UID {
     cap.authorize(self.id());
+
     &mut self.id
 }
 
@@ -97,6 +120,10 @@ public fun uid_mut<T>(self: &mut Collection<T>, cap: &CollectionAdminCap): &mut 
 
 public fun id<T>(self: &Collection<T>): ID {
     self.id.to_inner()
+}
+
+public fun bucket_id<T>(self: &Collection<T>): ID {
+    self.bucket_id
 }
 
 public fun description<T>(self: &Collection<T>): &String {
@@ -125,10 +152,12 @@ public fun total_supply<T>(self: &Collection<T>): u64 {
     }
 }
 
-public fun unit_description<T>(self: &Collection<T>): String {
-    self.unit_description
-}
+public fun collection_admin_cap_collection_id(cap: &CollectionAdminCap): ID { cap.collection_id }
 
-public fun unit_name<T>(self: &Collection<T>): String {
-    self.unit_name
+public fun collection_admin_cap_id(cap: &CollectionAdminCap): ID { cap.id.to_inner() }
+
+//=== Private Functions ===
+
+fun collection_admin_cap_authorize(cap: &CollectionAdminCap, collection_id: ID) {
+    assert!(cap.collection_id == collection_id, EInvalidCollection);
 }
