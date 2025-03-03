@@ -3,6 +3,7 @@ module dos_collection::collection;
 use std::string::String;
 use sui::transfer::Receiving;
 use sui::types;
+use sui::url::Url;
 
 //=== Aliases ===
 
@@ -19,7 +20,7 @@ public struct Collection<phantom T> has key, store {
     creator: address,
     name: String,
     description: String,
-    external_url: String,
+    external_url: Url,
     image_uri: String,
     supply: u64,
 }
@@ -41,7 +42,7 @@ public fun new<T: drop>(
     name: String,
     creator: address,
     description: String,
-    external_url: String,
+    external_url: Url,
     image_uri: String,
     supply: u64,
     ctx: &mut TxContext,
@@ -95,6 +96,14 @@ public fun id<T>(self: &Collection<T>): ID {
 
 public fun description<T>(self: &Collection<T>): &String {
     &self.description
+}
+
+public fun external_url<T>(self: &Collection<T>): &Url {
+    &self.external_url
+}
+
+public fun image_uri<T>(self: &Collection<T>): &String {
+    &self.image_uri
 }
 
 public fun name<T>(self: &Collection<T>): String {
