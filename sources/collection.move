@@ -15,7 +15,7 @@ public use fun collection_admin_cap_id as CollectionAdminCap.id;
 
 public struct COLLECTION has drop {}
 
-public struct Collection<phantom T> has key, store {
+public struct Collection<phantom T: key + store> has key, store {
     id: UID,
     creator: address,
     name: String,
@@ -25,7 +25,7 @@ public struct Collection<phantom T> has key, store {
     supply: u64,
 }
 
-public struct CollectionAdminCap has key, store {
+public struct CollectionAdminCap<phantom T: key + store> has key, store {
     id: UID,
     collection_id: ID,
 }
@@ -37,7 +37,7 @@ const EInvalidCollection: u64 = 1;
 
 //=== Public Functions ===
 
-public fun new<T>(
+public fun new<T: key + store>(
     publisher: &Publisher,
     name: String,
     creator: address,
@@ -46,7 +46,7 @@ public fun new<T>(
     image_uri: u256,
     supply: u64,
     ctx: &mut TxContext,
-): (Collection<T>, CollectionAdminCap) {
+): (Collection<T>, CollectionAdminCap<T>) {
     assert!(publisher.from_module<T>() == true, EInvalidPublisher);
 
     let collection = Collection<T> {
@@ -69,7 +69,7 @@ public fun new<T>(
 
 public fun receive<T: key + store>(
     self: &mut Collection<T>,
-    cap: &CollectionAdminCap,
+    cap: &CollectionAdminCap<T>,
     obj_to_receive: Receiving<T>,
 ): T {
     cap.authorize(self.id());
@@ -77,53 +77,60 @@ public fun receive<T: key + store>(
     transfer::public_receive(&mut self.id, obj_to_receive)
 }
 
-public fun uid<T>(self: &Collection<T>, cap: &CollectionAdminCap): &UID {
+public fun uid<T: key + store>(self: &Collection<T>, cap: &CollectionAdminCap<T>): &UID {
     cap.authorize(self.id());
 
     &self.id
 }
 
-public fun uid_mut<T>(self: &mut Collection<T>, cap: &CollectionAdminCap): &mut UID {
+public fun uid_mut<T: key + store>(
+    self: &mut Collection<T>,
+    cap: &CollectionAdminCap<T>,
+): &mut UID {
     cap.authorize(self.id());
     &mut self.id
 }
 
 //=== View Functions ===
 
-public fun id<T>(self: &Collection<T>): ID {
+public fun id<T: key + store>(self: &Collection<T>): ID {
     self.id.to_inner()
 }
 
-public fun creator<T>(self: &Collection<T>): address {
+public fun creator<T: key + store>(self: &Collection<T>): address {
     self.creator
 }
 
-public fun name<T>(self: &Collection<T>): String {
+public fun name<T: key + store>(self: &Collection<T>): String {
     self.name
 }
 
-public fun description<T>(self: &Collection<T>): String {
+public fun description<T: key + store>(self: &Collection<T>): String {
     self.description
 }
 
-public fun external_url<T>(self: &Collection<T>): &Url {
+public fun external_url<T: key + store>(self: &Collection<T>): &Url {
     &self.external_url
 }
 
-public fun image_uri<T>(self: &Collection<T>): u256 {
+public fun image_uri<T: key + store>(self: &Collection<T>): u256 {
     self.image_uri
 }
 
-public fun supply<T>(self: &Collection<T>): u64 {
+public fun supply<T: key + store>(self: &Collection<T>): u64 {
     self.supply
 }
 
-public fun collection_admin_cap_collection_id(cap: &CollectionAdminCap): ID { cap.collection_id }
+public fun collection_admin_cap_collection_id<T: key + store>(cap: &CollectionAdminCap<T>): ID {
+    cap.collection_id
+}
 
-public fun collection_admin_cap_id(cap: &CollectionAdminCap): ID { cap.id.to_inner() }
+public fun collection_admin_cap_id<T: key + store>(cap: &CollectionAdminCap<T>): ID {
+    cap.id.to_inner()
+}
 
 //=== Private Functions ===
 
-fun collection_admin_cap_authorize(cap: &CollectionAdminCap, collection_id: ID) {
+fun collection_admin_cap_authorize<T: key + store>(cap: &CollectionAdminCap<T>, collection_id: ID) {
     assert!(cap.collection_id == collection_id, EInvalidCollection);
 }
