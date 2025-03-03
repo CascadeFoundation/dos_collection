@@ -1,8 +1,8 @@
 module dos_collection::collection;
 
 use std::string::String;
+use sui::package::Publisher;
 use sui::transfer::Receiving;
-use sui::types;
 use sui::url::Url;
 
 //=== Aliases ===
@@ -32,13 +32,13 @@ public struct CollectionAdminCap has key, store {
 
 //=== Errors ===
 
-const EInvalidWitness: u64 = 0;
+const EInvalidPublisher: u64 = 0;
 const EInvalidCollection: u64 = 1;
 
 //=== Public Functions ===
 
-public fun new<T: drop>(
-    witness: T,
+public fun new<T>(
+    publisher: &Publisher,
     name: String,
     creator: address,
     description: String,
@@ -47,7 +47,7 @@ public fun new<T: drop>(
     supply: u64,
     ctx: &mut TxContext,
 ): (Collection<T>, CollectionAdminCap) {
-    assert!(types::is_one_time_witness(&witness), EInvalidWitness);
+    assert!(publisher.from_module<T>() == true, EInvalidPublisher);
 
     let collection = Collection<T> {
         id: object::new(ctx),
@@ -94,20 +94,24 @@ public fun id<T>(self: &Collection<T>): ID {
     self.id.to_inner()
 }
 
-public fun description<T>(self: &Collection<T>): String {
-    self.description
-}
-
-public fun external_url<T>(self: &Collection<T>): Url {
-    self.external_url
-}
-
-public fun image_uri<T>(self: &Collection<T>): u256 {
-    self.image_uri
+public fun creator<T>(self: &Collection<T>): address {
+    self.creator
 }
 
 public fun name<T>(self: &Collection<T>): String {
     self.name
+}
+
+public fun description<T>(self: &Collection<T>): String {
+    self.description
+}
+
+public fun external_url<T>(self: &Collection<T>): &Url {
+    &self.external_url
+}
+
+public fun image_uri<T>(self: &Collection<T>): u256 {
+    self.image_uri
 }
 
 public fun supply<T>(self: &Collection<T>): u64 {
