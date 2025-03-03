@@ -21,7 +21,7 @@ public struct Collection<phantom T: key + store> has key, store {
     name: String,
     description: String,
     external_url: Url,
-    image_uri: u256,
+    image_uri: String,
     supply: u64,
 }
 
@@ -43,7 +43,7 @@ public fun new<T: key + store>(
     creator: address,
     description: String,
     external_url: Url,
-    image_uri: u256,
+    image_uri: String,
     supply: u64,
     ctx: &mut TxContext,
 ): (Collection<T>, CollectionAdminCap<T>) {
@@ -113,7 +113,7 @@ public fun external_url<T: key + store>(self: &Collection<T>): &Url {
     &self.external_url
 }
 
-public fun image_uri<T: key + store>(self: &Collection<T>): u256 {
+public fun image_uri<T: key + store>(self: &Collection<T>): String {
     self.image_uri
 }
 
