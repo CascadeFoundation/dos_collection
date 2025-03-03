@@ -21,7 +21,7 @@ public struct Collection<phantom T> has key, store {
     name: String,
     description: String,
     external_url: Url,
-    image_uri: String,
+    image_uri: u256,
     supply: u64,
 }
 
@@ -43,7 +43,7 @@ public fun new<T: drop>(
     creator: address,
     description: String,
     external_url: Url,
-    image_uri: String,
+    image_uri: u256,
     supply: u64,
     ctx: &mut TxContext,
 ): (Collection<T>, CollectionAdminCap) {
@@ -94,16 +94,16 @@ public fun id<T>(self: &Collection<T>): ID {
     self.id.to_inner()
 }
 
-public fun description<T>(self: &Collection<T>): &String {
-    &self.description
+public fun description<T>(self: &Collection<T>): String {
+    self.description
 }
 
-public fun external_url<T>(self: &Collection<T>): &Url {
-    &self.external_url
+public fun external_url<T>(self: &Collection<T>): Url {
+    self.external_url
 }
 
-public fun image_uri<T>(self: &Collection<T>): &String {
-    &self.image_uri
+public fun image_uri<T>(self: &Collection<T>): u256 {
+    self.image_uri
 }
 
 public fun name<T>(self: &Collection<T>): String {
