@@ -1,6 +1,5 @@
 module dos_collection::collection;
 
-use dos_bucket::bucket::{Self, BucketAdminCap};
 use std::string::String;
 use sui::transfer::Receiving;
 use sui::types;
@@ -15,27 +14,19 @@ public use fun collection_admin_cap_id as CollectionAdminCap.id;
 
 public struct COLLECTION has drop {}
 
-public struct Collection<phantom T> has key {
+public struct Collection<phantom T> has key, store {
     id: UID,
-    kind: CollectionKind,
+    creator: address,
     name: String,
     description: String,
-    bucket_id: ID,
+    external_url: String,
+    image_uri: String,
+    supply: u64,
 }
 
 public struct CollectionAdminCap has key, store {
     id: UID,
     collection_id: ID,
-}
-
-public struct ShareCollectionPromise has key {
-    id: UID,
-    collection_id: ID,
-}
-
-public enum CollectionKind has copy, drop, store {
-    CAPPED { supply: u64, total_supply: u64 },
-    UNCAPPED { supply: u64 },
 }
 
 //=== Errors ===
@@ -47,21 +38,24 @@ const EInvalidCollection: u64 = 1;
 
 public fun new<T: drop>(
     witness: T,
-    kind: CollectionKind,
     name: String,
+    creator: address,
     description: String,
+    external_url: String,
+    image_uri: String,
+    supply: u64,
     ctx: &mut TxContext,
-): (Collection<T>, CollectionAdminCap, ShareCollectionPromise, BucketAdminCap) {
+): (Collection<T>, CollectionAdminCap) {
     assert!(types::is_one_time_witness(&witness), EInvalidWitness);
-
-    let (bucket, bucket_admin_cap) = bucket::new(ctx);
 
     let collection = Collection<T> {
         id: object::new(ctx),
-        kind: kind,
         name: name,
+        creator: creator,
         description: description,
-        bucket_id: bucket.id(),
+        external_url: external_url,
+        image_uri: image_uri,
+        supply: supply,
     };
 
     let collection_admin_cap = CollectionAdminCap {
@@ -69,14 +63,7 @@ public fun new<T: drop>(
         collection_id: collection.id(),
     };
 
-    let promise = ShareCollectionPromise {
-        id: object::new(ctx),
-        collection_id: collection.id(),
-    };
-
-    transfer::public_share_object(bucket);
-
-    (collection, collection_admin_cap, promise, bucket_admin_cap)
+    (collection, collection_admin_cap)
 }
 
 public fun receive<T: key + store>(
@@ -89,21 +76,6 @@ public fun receive<T: key + store>(
     transfer::public_receive(&mut self.id, obj_to_receive)
 }
 
-public fun share<T>(self: Collection<T>, promise: ShareCollectionPromise) {
-    transfer::share_object(self);
-
-    let ShareCollectionPromise { id, .. } = promise;
-    id.delete();
-}
-
-public fun new_capped_kind(total_supply: u64): CollectionKind {
-    CollectionKind::CAPPED { supply: 0, total_supply: total_supply }
-}
-
-public fun new_uncapped_kind(): CollectionKind {
-    CollectionKind::UNCAPPED { supply: 0 }
-}
-
 public fun uid<T>(self: &Collection<T>, cap: &CollectionAdminCap): &UID {
     cap.authorize(self.id());
 
@@ -112,7 +84,6 @@ public fun uid<T>(self: &Collection<T>, cap: &CollectionAdminCap): &UID {
 
 public fun uid_mut<T>(self: &mut Collection<T>, cap: &CollectionAdminCap): &mut UID {
     cap.authorize(self.id());
-
     &mut self.id
 }
 
@@ -122,16 +93,8 @@ public fun id<T>(self: &Collection<T>): ID {
     self.id.to_inner()
 }
 
-public fun bucket_id<T>(self: &Collection<T>): ID {
-    self.bucket_id
-}
-
 public fun description<T>(self: &Collection<T>): &String {
     &self.description
-}
-
-public fun kind<T>(self: &Collection<T>): CollectionKind {
-    self.kind
 }
 
 public fun name<T>(self: &Collection<T>): String {
@@ -139,17 +102,7 @@ public fun name<T>(self: &Collection<T>): String {
 }
 
 public fun supply<T>(self: &Collection<T>): u64 {
-    match (self.kind) {
-        CollectionKind::CAPPED { supply, .. } => supply,
-        CollectionKind::UNCAPPED { supply, .. } => supply,
-    }
-}
-
-public fun total_supply<T>(self: &Collection<T>): u64 {
-    match (self.kind) {
-        CollectionKind::CAPPED { total_supply, .. } => total_supply,
-        CollectionKind::UNCAPPED { .. } => 18446744073709551615,
-    }
+    self.supply
 }
 
 public fun collection_admin_cap_collection_id(cap: &CollectionAdminCap): ID { cap.collection_id }
