@@ -1,13 +1,12 @@
 module dos_collection::collection;
 
 use std::string::String;
-use sui::package::Publisher;
-use sui::transfer::Receiving;
+use std::type_name::{Self, TypeName};
+use sui::package::{Self, Publisher};
 use sui::url::Url;
 
 //=== Aliases ===
 
-public use fun collection_admin_cap_authorize as CollectionAdminCap.authorize;
 public use fun collection_admin_cap_collection_id as CollectionAdminCap.collection_id;
 public use fun collection_admin_cap_id as CollectionAdminCap.id;
 
@@ -20,6 +19,7 @@ public struct Collection<phantom T: key + store> has key, store {
     creator: address,
     name: String,
     description: String,
+    item_type: TypeName,
     external_url: Url,
     image_uri: String,
     supply: u64,
@@ -33,7 +33,12 @@ public struct CollectionAdminCap<phantom T: key + store> has key, store {
 //=== Errors ===
 
 const EInvalidPublisher: u64 = 0;
-const EInvalidCollection: u64 = 1;
+
+//=== Init Function ===
+
+fun init(otw: COLLECTION, ctx: &mut TxContext) {
+    package::claim_and_keep(otw, ctx);
+}
 
 //=== Public Functions ===
 
@@ -54,6 +59,7 @@ public fun new<T: key + store>(
         name: name,
         creator: creator,
         description: description,
+        item_type: type_name::get<T>(),
         external_url: external_url,
         image_uri: image_uri,
         supply: supply,
@@ -65,30 +71,6 @@ public fun new<T: key + store>(
     };
 
     (collection, collection_admin_cap)
-}
-
-public fun receive<T: key + store>(
-    self: &mut Collection<T>,
-    cap: &CollectionAdminCap<T>,
-    obj_to_receive: Receiving<T>,
-): T {
-    cap.authorize(self.id());
-
-    transfer::public_receive(&mut self.id, obj_to_receive)
-}
-
-public fun uid<T: key + store>(self: &Collection<T>, cap: &CollectionAdminCap<T>): &UID {
-    cap.authorize(self.id());
-
-    &self.id
-}
-
-public fun uid_mut<T: key + store>(
-    self: &mut Collection<T>,
-    cap: &CollectionAdminCap<T>,
-): &mut UID {
-    cap.authorize(self.id());
-    &mut self.id
 }
 
 //=== View Functions ===
@@ -127,10 +109,4 @@ public fun collection_admin_cap_collection_id<T: key + store>(cap: &CollectionAd
 
 public fun collection_admin_cap_id<T: key + store>(cap: &CollectionAdminCap<T>): ID {
     cap.id.to_inner()
-}
-
-//=== Private Functions ===
-
-fun collection_admin_cap_authorize<T: key + store>(cap: &CollectionAdminCap<T>, collection_id: ID) {
-    assert!(cap.collection_id == collection_id, EInvalidCollection);
 }
