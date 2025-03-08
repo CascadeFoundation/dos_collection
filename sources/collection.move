@@ -2,13 +2,13 @@ module dos_collection::collection;
 
 use std::string::String;
 use std::type_name::{Self, TypeName};
+use sui::event::emit;
 use sui::package::{Self, Publisher};
 use sui::url::Url;
 
 //=== Aliases ===
 
 public use fun collection_admin_cap_collection_id as CollectionAdminCap.collection_id;
-public use fun collection_admin_cap_id as CollectionAdminCap.id;
 
 //=== Structs ===
 
@@ -28,6 +28,15 @@ public struct Collection<phantom T> has key, store {
 public struct CollectionAdminCap<phantom T> has key, store {
     id: UID,
     collection_id: ID,
+}
+
+//=== Events ===
+
+public struct CollectionCreatedEvent has copy, drop {
+    creator: address,
+    collection_id: ID,
+    collection_admin_cap_id: ID,
+    collection_type: TypeName,
 }
 
 //=== Errors ===
@@ -67,17 +76,20 @@ public fun new<T>(
 
     let collection_admin_cap = CollectionAdminCap {
         id: object::new(ctx),
-        collection_id: collection.id(),
+        collection_id: collection.id.to_inner(),
     };
+
+    emit(CollectionCreatedEvent {
+        collection_id: collection.id.to_inner(),
+        collection_admin_cap_id: object::id(&collection_admin_cap),
+        collection_type: type_name::get<T>(),
+        creator: creator,
+    });
 
     (collection, collection_admin_cap)
 }
 
 //=== View Functions ===
-
-public fun id<T>(self: &Collection<T>): ID {
-    self.id.to_inner()
-}
 
 public fun creator<T>(self: &Collection<T>): address {
     self.creator
@@ -105,8 +117,4 @@ public fun supply<T>(self: &Collection<T>): u64 {
 
 public fun collection_admin_cap_collection_id<T>(cap: &CollectionAdminCap<T>): ID {
     cap.collection_id
-}
-
-public fun collection_admin_cap_id<T>(cap: &CollectionAdminCap<T>): ID {
-    cap.id.to_inner()
 }
