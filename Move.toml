@@ -5,8 +5,6 @@ license = "Cascade DOL 1.0"
 authors = ["Cascade Foundation (dos@cascade.foundation)"]
 
 [dependencies]
-Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/mainnet", override = true }
-DosBucket = { git = "https://github.com/CascadeFoundation/dos_bucket.git", rev = "main" }
 
 [addresses]
 dos_collection = "0x0"

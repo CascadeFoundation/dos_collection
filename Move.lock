@@ -2,63 +2,58 @@
 
 [move]
 version = 3
-manifest_digest = "58C37FE9144507B15D275797EE085AA9939F67DC2BCA0C9ACD26FF243B82F808"
-deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
+manifest_digest = "426414473D04658C97557311D5A1243D2AFD8F37C991C58066E35923F2B759C6"
+deps_digest = "397E6A9F7A624706DBDFEE056CE88391A15876868FD18A88504DA74EB458D697"
 dependencies = [
-  { id = "DosBucket", name = "DosBucket" },
+  { id = "Bridge", name = "Bridge" },
+  { id = "DeepBook", name = "DeepBook" },
+  { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
+  { id = "SuiSystem", name = "SuiSystem" },
 ]
 
 [[move.package]]
-id = "DosBucket"
-source = { git = "https://github.com/CascadeFoundation/dos_bucket.git", rev = "main", subdir = "" }
+id = "Bridge"
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "9c04e1840eb5", subdir = "crates/sui-framework/packages/bridge" }
 
 dependencies = [
+  { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
-  { id = "Walrus", name = "Walrus" },
+  { id = "SuiSystem", name = "SuiSystem" },
+]
+
+[[move.package]]
+id = "DeepBook"
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "9c04e1840eb5", subdir = "crates/sui-framework/packages/deepbook" }
+
+dependencies = [
+  { id = "MoveStdlib", name = "MoveStdlib" },
+  { id = "Sui", name = "Sui" },
 ]
 
 [[move.package]]
 id = "MoveStdlib"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/mainnet", subdir = "crates/sui-framework/packages/move-stdlib" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "9c04e1840eb5", subdir = "crates/sui-framework/packages/move-stdlib" }
 
 [[move.package]]
 id = "Sui"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/mainnet", subdir = "crates/sui-framework/packages/sui-framework" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "9c04e1840eb5", subdir = "crates/sui-framework/packages/sui-framework" }
 
 dependencies = [
   { id = "MoveStdlib", name = "MoveStdlib" },
 ]
 
 [[move.package]]
-id = "WAL"
-source = { git = "https://github.com/MystenLabs/walrus-docs.git", rev = "main", subdir = "contracts/wal" }
+id = "SuiSystem"
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "9c04e1840eb5", subdir = "crates/sui-framework/packages/sui-system" }
 
 dependencies = [
+  { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
-]
-
-[[move.package]]
-id = "WAL_exchange"
-source = { git = "https://github.com/MystenLabs/walrus-docs.git", rev = "main", subdir = "contracts/wal_exchange" }
-
-dependencies = [
-  { id = "Sui", name = "Sui" },
-  { id = "WAL", name = "WAL" },
-]
-
-[[move.package]]
-id = "Walrus"
-source = { git = "https://github.com/MystenLabs/walrus-docs.git", rev = "main", subdir = "contracts/walrus" }
-
-dependencies = [
-  { id = "Sui", name = "Sui" },
-  { id = "WAL", name = "WAL" },
-  { id = "WAL_exchange", name = "WAL_exchange" },
 ]
 
 [move.toolchain-version]
-compiler-version = "1.44.2"
+compiler-version = "1.45.2"
 edition = "2024.beta"
 flavor = "sui"
 
@@ -66,6 +61,6 @@ flavor = "sui"
 
 [env.testnet]
 chain-id = "4c78adac"
-original-published-id = "0xdea00f9d6083737cf55ed882cc93b80c9932f253d2a9e573e047db19306ed7a5"
-latest-published-id = "0xdea00f9d6083737cf55ed882cc93b80c9932f253d2a9e573e047db19306ed7a5"
+original-published-id = "0xa0545513617ed01e9ff8b92f90aefc4165aab695e20361f8ed5634ba88e68f7d"
+latest-published-id = "0xa0545513617ed01e9ff8b92f90aefc4165aab695e20361f8ed5634ba88e68f7d"
 published-version = "1"

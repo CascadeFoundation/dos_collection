@@ -42,6 +42,7 @@ public struct CollectionCreatedEvent has copy, drop {
 //=== Errors ===
 
 const EInvalidPublisher: u64 = 0;
+const EInvalidCollectionAdminCap: u64 = 1;
 
 //=== Init Function ===
 
