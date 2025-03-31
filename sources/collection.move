@@ -5,7 +5,6 @@ use std::type_name::{Self, TypeName};
 use sui::dynamic_field as df;
 use sui::event::emit;
 use sui::package::{Self, Publisher};
-use sui::url::Url;
 
 //=== Aliases ===
 
@@ -21,7 +20,7 @@ public struct Collection<phantom T> has key, store {
     name: String,
     description: String,
     item_type: TypeName,
-    external_url: Url,
+    external_url: String,
     image_uri: String,
     supply: u64,
 }
@@ -58,7 +57,7 @@ public fun new<T>(
     name: String,
     creator: address,
     description: String,
-    external_url: Url,
+    external_url: String,
     image_uri: String,
     supply: u64,
     ctx: &mut TxContext,
@@ -110,6 +109,11 @@ public fun remove_metadata<T: key + store, K: copy + drop + store, V: drop + sto
     df::remove<K, V>(&mut self.id, key);
 }
 
+public fun collection_admin_cap_destroy<T>(cap: CollectionAdminCap<T>) {
+    let CollectionAdminCap { id, .. } = cap;
+    id.delete();
+}
+
 //=== View Functions ===
 
 public fun creator<T>(self: &Collection<T>): address {
@@ -124,8 +128,8 @@ public fun description<T>(self: &Collection<T>): String {
     self.description
 }
 
-public fun external_url<T>(self: &Collection<T>): &Url {
-    &self.external_url
+public fun external_url<T>(self: &Collection<T>): String {
+    self.external_url
 }
 
 public fun image_uri<T>(self: &Collection<T>): String {
