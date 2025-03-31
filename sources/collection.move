@@ -9,6 +9,7 @@ use sui::package::{Self, Publisher};
 //=== Aliases ===
 
 public use fun collection_admin_cap_collection_id as CollectionAdminCap.collection_id;
+public use fun collection_admin_cap_destroy as CollectionAdminCap.destroy;
 
 //=== Structs ===
 
