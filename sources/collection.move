@@ -2,6 +2,7 @@ module dos_collection::collection;
 
 use std::string::String;
 use std::type_name::{Self, TypeName};
+use sui::dynamic_field as df;
 use sui::event::emit;
 use sui::package::{Self, Publisher};
 use sui::url::Url;
@@ -88,6 +89,25 @@ public fun new<T>(
     });
 
     (collection, collection_admin_cap)
+}
+
+public fun add_metadata<T: key + store, K: copy + drop + store, V: drop + store>(
+    self: &mut Collection<T>,
+    cap: &CollectionAdminCap<T>,
+    key: K,
+    value: V,
+) {
+    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    df::add(&mut self.id, key, value);
+}
+
+public fun remove_metadata<T: key + store, K: copy + drop + store, V: drop + store>(
+    self: &mut Collection<T>,
+    cap: &CollectionAdminCap<T>,
+    key: K,
+) {
+    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    df::remove<K, V>(&mut self.id, key);
 }
 
 //=== View Functions ===
