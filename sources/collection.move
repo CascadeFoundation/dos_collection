@@ -6,6 +6,7 @@ use sui::bag::{Self, Bag};
 use sui::dynamic_field as df;
 use sui::event::emit;
 use sui::package::{Self, Publisher};
+use sui::types::is_one_time_witness;
 
 //=== Aliases ===
 
@@ -46,6 +47,7 @@ public struct CollectionCreatedEvent has copy, drop {
 
 const EInvalidPublisher: u64 = 0;
 const EInvalidCollectionAdminCap: u64 = 1;
+const EInvalidWitness: u64 = 2;
 
 //=== Init Function ===
 
@@ -55,7 +57,8 @@ fun init(otw: COLLECTION, ctx: &mut TxContext) {
 
 //=== Public Functions ===
 
-public fun new<T>(
+public fun new<T, W: drop>(
+    otw: &W,
     publisher: &Publisher,
     name: String,
     creator: address,
@@ -65,7 +68,10 @@ public fun new<T>(
     supply: u64,
     ctx: &mut TxContext,
 ): (Collection<T>, CollectionAdminCap<T>) {
-    assert!(publisher.from_module<T>() == true, EInvalidPublisher);
+    assert!(is_one_time_witness(otw), EInvalidWitness);
+
+    assert!(publisher.from_module<T>(), EInvalidPublisher);
+    assert!(publisher.from_module<W>(), EInvalidPublisher);
 
     let collection = Collection<T> {
         id: object::new(ctx),
