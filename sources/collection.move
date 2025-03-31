@@ -2,6 +2,7 @@ module dos_collection::collection;
 
 use std::string::String;
 use std::type_name::{Self, TypeName};
+use sui::bag::{Self, Bag};
 use sui::dynamic_field as df;
 use sui::event::emit;
 use sui::package::{Self, Publisher};
@@ -24,6 +25,7 @@ public struct Collection<phantom T> has key, store {
     external_url: String,
     image_uri: String,
     supply: u64,
+    metadata: Bag,
 }
 
 public struct CollectionAdminCap<phantom T> has key, store {
@@ -74,6 +76,7 @@ public fun new<T>(
         external_url: external_url,
         image_uri: image_uri,
         supply: supply,
+        metadata: bag::new(ctx),
     };
 
     let collection_admin_cap = CollectionAdminCap {
@@ -98,7 +101,7 @@ public fun add_metadata<T: key + store, K: copy + drop + store, V: drop + store>
     value: V,
 ) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
-    df::add(&mut self.id, key, value);
+    self.metadata.add(key, value);
 }
 
 public fun remove_metadata<T: key + store, K: copy + drop + store, V: drop + store>(
@@ -135,6 +138,10 @@ public fun external_url<T>(self: &Collection<T>): String {
 
 public fun image_uri<T>(self: &Collection<T>): String {
     self.image_uri
+}
+
+public fun metadata<T: key + store>(self: &Collection<T>): &Bag {
+    &self.metadata
 }
 
 public fun supply<T>(self: &Collection<T>): u64 {
