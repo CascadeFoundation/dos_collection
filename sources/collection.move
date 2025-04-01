@@ -57,9 +57,10 @@ fun init(otw: COLLECTION, ctx: &mut TxContext) {
 
 //=== Public Functions ===
 
+// Create a new collection.
+// Requires a OTW reference to ensure only one Collection object can be created for a given type.
 public fun new<T, W: drop>(
     otw: &W,
-    publisher: &Publisher,
     name: String,
     creator: address,
     description: String,
@@ -70,8 +71,11 @@ public fun new<T, W: drop>(
 ): (Collection<T>, CollectionAdminCap<T>) {
     assert!(is_one_time_witness(otw), EInvalidWitness);
 
-    assert!(publisher.from_module<T>(), EInvalidPublisher);
-    assert!(publisher.from_module<W>(), EInvalidPublisher);
+    let otw_type_name = type_name::get_with_original_ids<W>();
+    let obj_type_name = type_name::get_with_original_ids<T>();
+
+    assert!(otw_type_name.get_address() == obj_type_name.get_address(), EInvalidWitness);
+    assert!(otw_type_name.get_module() == obj_type_name.get_module(), EInvalidWitness);
 
     let collection = Collection<T> {
         id: object::new(ctx),
