@@ -6,7 +6,6 @@ use sui::bag::{Self, Bag};
 use sui::dynamic_field as df;
 use sui::event::emit;
 use sui::package::{Self, Publisher};
-use sui::types::is_one_time_witness;
 
 //=== Aliases ===
 
@@ -47,7 +46,6 @@ public struct CollectionCreatedEvent has copy, drop {
 
 const EInvalidPublisher: u64 = 0;
 const EInvalidCollectionAdminCap: u64 = 1;
-const EInvalidWitness: u64 = 2;
 
 //=== Init Function ===
 
@@ -58,9 +56,8 @@ fun init(otw: COLLECTION, ctx: &mut TxContext) {
 //=== Public Functions ===
 
 // Create a new collection.
-// Requires a OTW reference to ensure only one Collection object can be created for a given type.
-public fun new<T, W: drop>(
-    otw: &W,
+public fun new<T>(
+    publisher: &Publisher,
     name: String,
     creator: address,
     description: String,
@@ -69,13 +66,7 @@ public fun new<T, W: drop>(
     supply: u64,
     ctx: &mut TxContext,
 ): (Collection<T>, CollectionAdminCap<T>) {
-    assert!(is_one_time_witness(otw), EInvalidWitness);
-
-    let otw_type_name = type_name::get_with_original_ids<W>();
-    let obj_type_name = type_name::get_with_original_ids<T>();
-
-    assert!(otw_type_name.get_address() == obj_type_name.get_address(), EInvalidWitness);
-    assert!(otw_type_name.get_module() == obj_type_name.get_module(), EInvalidWitness);
+    assert!(publisher.from_module<T>(), EInvalidPublisher);
 
     let collection = Collection<T> {
         id: object::new(ctx),
