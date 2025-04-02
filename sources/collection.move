@@ -38,7 +38,7 @@ public struct CollectionAdminCap<phantom T> has key, store {
 }
 
 public enum CollectionState has copy, drop, store {
-    INITIALIZING { target_supply: u64 },
+    INITIALIZING { current_supply: u64, target_supply: u64 },
     INITIALIZED { total_supply: u64 },
 }
 
@@ -56,6 +56,8 @@ public struct CollectionCreatedEvent has copy, drop {
 const EInvalidPublisher: u64 = 0;
 const EInvalidCollectionAdminCap: u64 = 1;
 const ECollectionAlreadyInitialized: u64 = 2;
+const ECollectionNotInitialized: u64 = 3;
+const ECollectionNotInitializing: u64 = 4;
 
 //=== Init Function ===
 
@@ -80,7 +82,7 @@ public fun new<T>(
 
     let collection = Collection<T> {
         id: object::new(ctx),
-        state: CollectionState::INITIALIZING { target_supply: target_supply },
+        state: CollectionState::INITIALIZING { current_supply: 0, target_supply: target_supply },
         name: name,
         creator: creator,
         description: description,
@@ -190,4 +192,39 @@ public fun image_uri<T>(self: &Collection<T>): String {
 
 public fun collection_admin_cap_collection_id<T>(cap: &CollectionAdminCap<T>): ID {
     cap.collection_id
+}
+
+public fun current_supply<T>(self: &Collection<T>): u64 {
+    match (self.state) {
+        CollectionState::INITIALIZED { total_supply, .. } => total_supply,
+        _ => abort ECollectionNotInitialized,
+    }
+}
+
+public fun target_supply<T>(self: &Collection<T>): u64 {
+    match (self.state) {
+        CollectionState::INITIALIZING { target_supply, .. } => target_supply,
+        _ => abort ECollectionNotInitializing,
+    }
+}
+
+public fun total_supply<T>(self: &Collection<T>): u64 {
+    match (self.state) {
+        CollectionState::INITIALIZED { total_supply, .. } => total_supply,
+        _ => abort ECollectionNotInitialized,
+    }
+}
+
+public fun assert_state_initialized<T>(self: &Collection<T>) {
+    match (self.state) {
+        CollectionState::INITIALIZED { .. } => (),
+        _ => abort ECollectionNotInitialized,
+    };
+}
+
+public fun assert_state_initializing<T>(self: &Collection<T>) {
+    match (self.state) {
+        CollectionState::INITIALIZING { .. } => (),
+        _ => abort ECollectionNotInitializing,
+    };
 }
