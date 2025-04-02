@@ -7,6 +7,7 @@ use sui::event::emit;
 use sui::package::{Self, Publisher};
 use sui::table::{Self, Table};
 use sui::transfer::Receiving;
+use sui::types;
 use wal::wal::WAL;
 use walrus::blob::Blob;
 use walrus::system::System;
@@ -54,13 +55,13 @@ public struct CollectionCreatedEvent has copy, drop {
 
 //=== Errors ===
 
-const EInvalidPublisher: u64 = 0;
+const ENotOneTimeWitness: u64 = 0;
 const EInvalidCollectionAdminCap: u64 = 1;
 const ECollectionAlreadyInitialized: u64 = 2;
 const ECollectionNotInitialized: u64 = 3;
 const ECollectionNotInitializing: u64 = 4;
 const EBlobNotReserved: u64 = 5;
-
+const EInvalidOneTimeWitnessForType: u64 = 6;
 //=== Init Function ===
 
 fun init(otw: COLLECTION, ctx: &mut TxContext) {
@@ -70,8 +71,8 @@ fun init(otw: COLLECTION, ctx: &mut TxContext) {
 //=== Public Functions ===
 
 // Create a new collection.
-public fun new<T>(
-    publisher: &Publisher,
+public fun new<T, OTW: drop>(
+    otw: &OTW,
     name: String,
     creator: address,
     description: String,
@@ -80,7 +81,13 @@ public fun new<T>(
     target_supply: u64,
     ctx: &mut TxContext,
 ): (Collection<T>, CollectionAdminCap<T>) {
-    assert!(publisher.from_module<T>(), EInvalidPublisher);
+    assert!(types::is_one_time_witness(otw), ENotOneTimeWitness);
+
+    let otw_type = type_name::get<OTW>();
+    let item_type = type_name::get<T>();
+
+    assert!(otw_type.get_address() == item_type.get_address(), EInvalidOneTimeWitnessForType);
+    assert!(otw_type.get_module() == item_type.get_module(), EInvalidOneTimeWitnessForType);
 
     let collection = Collection<T> {
         id: object::new(ctx),
