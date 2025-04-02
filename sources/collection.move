@@ -19,7 +19,7 @@ public use fun collection_admin_cap_destroy as CollectionAdminCap.destroy;
 
 public struct COLLECTION has drop {}
 
-public struct Collection<phantom T> has key {
+public struct Collection<phantom T> has key, store {
     id: UID,
     state: CollectionState,
     creator: address,
