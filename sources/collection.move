@@ -6,6 +6,7 @@ use sui::coin::{Self, Coin};
 use sui::event::emit;
 use sui::package::{Self, Publisher};
 use sui::table::{Self, Table};
+use sui::transfer::Receiving;
 use wal::wal::WAL;
 use walrus::blob::Blob;
 use walrus::system::System;
@@ -58,6 +59,7 @@ const EInvalidCollectionAdminCap: u64 = 1;
 const ECollectionAlreadyInitialized: u64 = 2;
 const ECollectionNotInitialized: u64 = 3;
 const ECollectionNotInitializing: u64 = 4;
+const EBlobNotReserved: u64 = 5;
 
 //=== Init Function ===
 
@@ -133,6 +135,17 @@ public fun register_item<T: key>(
     };
 }
 
+// Receive a Blob that's been sent to the Collection, and store it.
+public fun receive_and_store_blob<T: key>(
+    self: &mut Collection<T>,
+    cap: &CollectionAdminCap<T>,
+    blob_to_receive: Receiving<Blob>,
+) {
+    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    let blob = transfer::public_receive(&mut self.id, blob_to_receive);
+    internal_store_blob(self, blob);
+}
+
 // Renew a Blob with a WAL coin. Does not require CollectionAdminCap to allow.
 // anyone to renew a Blob associate with this Collection.
 public fun renew_blob<T: key>(
@@ -160,12 +173,16 @@ public fun reserve_blob<T: key>(
 // Store a Blob in the Collection, requires a slot to be reserved first.
 public fun store_blob<T: key>(self: &mut Collection<T>, cap: &CollectionAdminCap<T>, blob: Blob) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
-    self.blobs.borrow_mut(blob.blob_id()).fill(blob);
+    internal_store_blob(self, blob);
 }
 
 public fun collection_admin_cap_destroy<T>(cap: CollectionAdminCap<T>) {
     let CollectionAdminCap { id, .. } = cap;
     id.delete();
+}
+
+fun internal_store_blob<T: key>(self: &mut Collection<T>, blob: Blob) {
+    self.blobs.borrow_mut(blob.blob_id()).fill(blob);
 }
 
 //=== View Functions ===
@@ -213,6 +230,10 @@ public fun total_supply<T>(self: &Collection<T>): u64 {
         CollectionState::INITIALIZED { total_supply, .. } => total_supply,
         _ => abort ECollectionNotInitialized,
     }
+}
+
+public fun assert_blob_reserved<T>(self: &Collection<T>, blob_id: u256) {
+    assert!(self.blobs.borrow(blob_id).is_some(), EBlobNotReserved);
 }
 
 public fun assert_state_initialized<T>(self: &Collection<T>) {
