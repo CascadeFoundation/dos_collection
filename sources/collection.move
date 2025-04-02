@@ -2,10 +2,13 @@ module dos_collection::collection;
 
 use std::string::String;
 use std::type_name::{Self, TypeName};
-use sui::bag::{Self, Bag};
-use sui::dynamic_field as df;
+use sui::coin::{Self, Coin};
 use sui::event::emit;
 use sui::package::{Self, Publisher};
+use sui::table::{Self, Table};
+use wal::wal::WAL;
+use walrus::blob::Blob;
+use walrus::system::System;
 
 //=== Aliases ===
 
@@ -16,21 +19,27 @@ public use fun collection_admin_cap_destroy as CollectionAdminCap.destroy;
 
 public struct COLLECTION has drop {}
 
-public struct Collection<phantom T> has key, store {
+public struct Collection<phantom T> has key {
     id: UID,
+    state: CollectionState,
     creator: address,
     name: String,
     description: String,
     item_type: TypeName,
     external_url: String,
     image_uri: String,
-    supply: u64,
-    metadata: Bag,
+    items: Table<u64, ID>,
+    blobs: Table<u256, Option<Blob>>,
 }
 
 public struct CollectionAdminCap<phantom T> has key, store {
     id: UID,
     collection_id: ID,
+}
+
+public enum CollectionState has copy, drop, store {
+    INITIALIZING { target_supply: u64 },
+    INITIALIZED { total_supply: u64 },
 }
 
 //=== Events ===
@@ -46,6 +55,7 @@ public struct CollectionCreatedEvent has copy, drop {
 
 const EInvalidPublisher: u64 = 0;
 const EInvalidCollectionAdminCap: u64 = 1;
+const ECollectionAlreadyInitialized: u64 = 2;
 
 //=== Init Function ===
 
@@ -63,21 +73,22 @@ public fun new<T>(
     description: String,
     external_url: String,
     image_uri: String,
-    supply: u64,
+    target_supply: u64,
     ctx: &mut TxContext,
 ): (Collection<T>, CollectionAdminCap<T>) {
     assert!(publisher.from_module<T>(), EInvalidPublisher);
 
     let collection = Collection<T> {
         id: object::new(ctx),
+        state: CollectionState::INITIALIZING { target_supply: target_supply },
         name: name,
         creator: creator,
         description: description,
         item_type: type_name::get<T>(),
         external_url: external_url,
         image_uri: image_uri,
-        supply: supply,
-        metadata: bag::new(ctx),
+        items: table::new(ctx),
+        blobs: table::new(ctx),
     };
 
     let collection_admin_cap = CollectionAdminCap {
@@ -95,23 +106,59 @@ public fun new<T>(
     (collection, collection_admin_cap)
 }
 
-public fun add_metadata<T: key + store, K: copy + drop + store, V: drop + store>(
+public fun register_item<T: key>(
     self: &mut Collection<T>,
     cap: &CollectionAdminCap<T>,
-    key: K,
-    value: V,
+    number: u64,
+    item: &T,
 ) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
-    self.metadata.add(key, value);
+
+    match (self.state) {
+        CollectionState::INITIALIZING { mut target_supply, .. } => {
+            // Assert that the quantity of registered items is less than the target supply.
+            assert!(self.items.length() < target_supply, ECollectionAlreadyInitialized);
+            // Register the item to the collection.
+            self.items.add(number, object::id(item));
+            // Increment the target supply.
+            target_supply = target_supply + 1;
+            // If the quantity of registered items is equal to the target supply, set the state to initialized.
+            if (self.items.length() == target_supply) {
+                self.state = CollectionState::INITIALIZED { total_supply: target_supply }
+            };
+        },
+        _ => abort ECollectionAlreadyInitialized,
+    };
 }
 
-public fun remove_metadata<T: key + store, K: copy + drop + store, V: drop + store>(
+// Renew a Blob with a WAL coin. Does not require CollectionAdminCap to allow.
+// anyone to renew a Blob associate with this Collection.
+public fun renew_blob<T: key>(
+    self: &mut Collection<T>,
+    blob_id: u256,
+    extension_epochs: u32,
+    payment_coin: &mut Coin<WAL>,
+    system: &mut System,
+) {
+    let blob_opt_mut = self.blobs.borrow_mut(blob_id);
+    let blob_mut = blob_opt_mut.borrow_mut();
+    system.extend_blob(blob_mut, extension_epochs, payment_coin);
+}
+
+// Reserve a storage slot for a Blob by storing the expected Blob ID mapped to option::none().
+public fun reserve_blob<T: key>(
     self: &mut Collection<T>,
     cap: &CollectionAdminCap<T>,
-    key: K,
+    blob_id: u256,
 ) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
-    df::remove<K, V>(&mut self.id, key);
+    self.blobs.add(blob_id, option::none());
+}
+
+// Store a Blob in the Collection, requires a slot to be reserved first.
+public fun store_blob<T: key>(self: &mut Collection<T>, cap: &CollectionAdminCap<T>, blob: Blob) {
+    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    self.blobs.borrow_mut(blob.blob_id()).fill(blob);
 }
 
 public fun collection_admin_cap_destroy<T>(cap: CollectionAdminCap<T>) {
@@ -139,14 +186,6 @@ public fun external_url<T>(self: &Collection<T>): String {
 
 public fun image_uri<T>(self: &Collection<T>): String {
     self.image_uri
-}
-
-public fun metadata<T: key + store>(self: &Collection<T>): &Bag {
-    &self.metadata
-}
-
-public fun supply<T>(self: &Collection<T>): u64 {
-    self.supply
 }
 
 public fun collection_admin_cap_collection_id<T>(cap: &CollectionAdminCap<T>): ID {
