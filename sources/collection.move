@@ -2,9 +2,9 @@ module dos_collection::collection;
 
 use std::string::String;
 use std::type_name::{Self, TypeName};
-use sui::coin::{Self, Coin};
+use sui::coin::Coin;
 use sui::event::emit;
-use sui::package::{Self, Publisher};
+use sui::package;
 use sui::table::{Self, Table};
 use sui::transfer::Receiving;
 use sui::types;
@@ -21,7 +21,7 @@ public use fun collection_admin_cap_destroy as CollectionAdminCap.destroy;
 
 public struct COLLECTION has drop {}
 
-public struct Collection<phantom T> has key, store {
+public struct Collection has key, store {
     id: UID,
     state: CollectionState,
     creator: address,
@@ -34,9 +34,10 @@ public struct Collection<phantom T> has key, store {
     blobs: Table<u256, Option<Blob>>,
 }
 
-public struct CollectionAdminCap<phantom T> has key, store {
+public struct CollectionAdminCap has key, store {
     id: UID,
     collection_id: ID,
+    collection_type: TypeName,
 }
 
 public enum CollectionState has copy, drop, store {
@@ -62,6 +63,8 @@ const ECollectionNotInitialized: u64 = 3;
 const ECollectionNotInitializing: u64 = 4;
 const EBlobNotReserved: u64 = 5;
 const EInvalidOneTimeWitnessForType: u64 = 6;
+const EInvalidItemType: u64 = 7;
+
 //=== Init Function ===
 
 fun init(otw: COLLECTION, ctx: &mut TxContext) {
@@ -71,7 +74,7 @@ fun init(otw: COLLECTION, ctx: &mut TxContext) {
 //=== Public Functions ===
 
 // Create a new collection.
-public fun new<T, OTW: drop>(
+public fun new<T: key + store, OTW: drop>(
     otw: &OTW,
     name: String,
     creator: address,
@@ -80,7 +83,7 @@ public fun new<T, OTW: drop>(
     image_uri: String,
     target_supply: u64,
     ctx: &mut TxContext,
-): (Collection<T>, CollectionAdminCap<T>) {
+): (Collection, CollectionAdminCap) {
     assert!(types::is_one_time_witness(otw), ENotOneTimeWitness);
 
     let otw_type = type_name::get<OTW>();
@@ -89,13 +92,13 @@ public fun new<T, OTW: drop>(
     assert!(otw_type.get_address() == item_type.get_address(), EInvalidOneTimeWitnessForType);
     assert!(otw_type.get_module() == item_type.get_module(), EInvalidOneTimeWitnessForType);
 
-    let collection = Collection<T> {
+    let collection = Collection {
         id: object::new(ctx),
         state: CollectionState::INITIALIZING { current_supply: 0, target_supply: target_supply },
         name: name,
         creator: creator,
         description: description,
-        item_type: type_name::get<T>(),
+        item_type: item_type,
         external_url: external_url,
         image_uri: image_uri,
         items: table::new(ctx),
@@ -105,25 +108,27 @@ public fun new<T, OTW: drop>(
     let collection_admin_cap = CollectionAdminCap {
         id: object::new(ctx),
         collection_id: collection.id.to_inner(),
+        collection_type: item_type,
     };
 
     emit(CollectionCreatedEvent {
         collection_id: collection.id.to_inner(),
         collection_admin_cap_id: object::id(&collection_admin_cap),
-        collection_type: type_name::get<T>(),
+        collection_type: item_type,
         creator: creator,
     });
 
     (collection, collection_admin_cap)
 }
 
-public fun register_item<T: key>(
-    self: &mut Collection<T>,
-    cap: &CollectionAdminCap<T>,
+public fun register_item<T: key + store>(
+    self: &mut Collection,
+    cap: &CollectionAdminCap,
     number: u64,
     item: &T,
 ) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    assert!(type_name::get<T>() == self.item_type, EInvalidItemType);
 
     match (self.state) {
         CollectionState::INITIALIZING { mut target_supply, .. } => {
@@ -143,9 +148,9 @@ public fun register_item<T: key>(
 }
 
 // Receive a Blob that's been sent to the Collection, and store it.
-public fun receive_and_store_blob<T: key>(
-    self: &mut Collection<T>,
-    cap: &CollectionAdminCap<T>,
+public fun receive_and_store_blob(
+    self: &mut Collection,
+    cap: &CollectionAdminCap,
     blob_to_receive: Receiving<Blob>,
 ) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
@@ -155,8 +160,8 @@ public fun receive_and_store_blob<T: key>(
 
 // Renew a Blob with a WAL coin. Does not require CollectionAdminCap to allow.
 // anyone to renew a Blob associate with this Collection.
-public fun renew_blob<T: key>(
-    self: &mut Collection<T>,
+public fun renew_blob(
+    self: &mut Collection,
     blob_id: u256,
     extension_epochs: u32,
     payment_coin: &mut Coin<WAL>,
@@ -168,89 +173,85 @@ public fun renew_blob<T: key>(
 }
 
 // Reserve a storage slot for a Blob by storing the expected Blob ID mapped to option::none().
-public fun reserve_blob<T: key>(
-    self: &mut Collection<T>,
-    cap: &CollectionAdminCap<T>,
-    blob_id: u256,
-) {
+public fun reserve_blob(self: &mut Collection, cap: &CollectionAdminCap, blob_id: u256) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
     self.blobs.add(blob_id, option::none());
 }
 
 // Store a Blob in the Collection, requires a slot to be reserved first.
-public fun store_blob<T: key>(self: &mut Collection<T>, cap: &CollectionAdminCap<T>, blob: Blob) {
+public fun store_blob(self: &mut Collection, cap: &CollectionAdminCap, blob: Blob) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
     internal_store_blob(self, blob);
 }
 
-public fun collection_admin_cap_destroy<T>(cap: CollectionAdminCap<T>) {
+public fun collection_admin_cap_destroy(cap: CollectionAdminCap) {
     let CollectionAdminCap { id, .. } = cap;
     id.delete();
 }
 
-fun internal_store_blob<T: key>(self: &mut Collection<T>, blob: Blob) {
+fun internal_store_blob(self: &mut Collection, blob: Blob) {
     self.blobs.borrow_mut(blob.blob_id()).fill(blob);
 }
 
 //=== View Functions ===
 
-public fun creator<T>(self: &Collection<T>): address {
+public fun creator(self: &Collection): address {
     self.creator
 }
 
-public fun name<T>(self: &Collection<T>): String {
-    self.name
-}
-
-public fun description<T>(self: &Collection<T>): String {
+public fun description(self: &Collection): String {
     self.description
 }
 
-public fun external_url<T>(self: &Collection<T>): String {
+public fun external_url(self: &Collection): String {
     self.external_url
 }
 
-public fun image_uri<T>(self: &Collection<T>): String {
+public fun image_uri(self: &Collection): String {
     self.image_uri
 }
 
-public fun collection_admin_cap_collection_id<T>(cap: &CollectionAdminCap<T>): ID {
+public fun name(self: &Collection): String {
+    self.name
+}
+
+public fun collection_admin_cap_collection_id(cap: &CollectionAdminCap): ID {
     cap.collection_id
 }
 
-public fun current_supply<T>(self: &Collection<T>): u64 {
+public fun current_supply(self: &Collection): u64 {
     match (self.state) {
         CollectionState::INITIALIZED { total_supply, .. } => total_supply,
         _ => abort ECollectionNotInitialized,
     }
 }
 
-public fun target_supply<T>(self: &Collection<T>): u64 {
+public fun target_supply(self: &Collection): u64 {
     match (self.state) {
         CollectionState::INITIALIZING { target_supply, .. } => target_supply,
         _ => abort ECollectionNotInitializing,
     }
 }
 
-public fun total_supply<T>(self: &Collection<T>): u64 {
+public fun total_supply(self: &Collection): u64 {
     match (self.state) {
         CollectionState::INITIALIZED { total_supply, .. } => total_supply,
         _ => abort ECollectionNotInitialized,
     }
 }
 
-public fun assert_blob_reserved<T>(self: &Collection<T>, blob_id: u256) {
+public fun assert_blob_reserved(self: &Collection, blob_id: u256) {
     assert!(self.blobs.borrow(blob_id).is_some(), EBlobNotReserved);
 }
 
-public fun assert_state_initialized<T>(self: &Collection<T>) {
+public fun assert_state_initialized(self: &Collection) {
     match (self.state) {
         CollectionState::INITIALIZED { .. } => (),
         _ => abort ECollectionNotInitialized,
     };
 }
 
-public fun assert_state_initializing<T>(self: &Collection<T>) {
+public fun assert_state_initializing(self: &Collection) {
     match (self.state) {
         CollectionState::INITIALIZING { .. } => (),
         _ => abort ECollectionNotInitializing,

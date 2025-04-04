@@ -2,14 +2,15 @@
 
 [move]
 version = 3
-manifest_digest = "426414473D04658C97557311D5A1243D2AFD8F37C991C58066E35923F2B759C6"
-deps_digest = "397E6A9F7A624706DBDFEE056CE88391A15876868FD18A88504DA74EB458D697"
+manifest_digest = "3EE6269443AA6908F30824491BD7655AC8201A05AB6E8E39A8C40AD7D45C7E26"
+deps_digest = "52B406A7A21811BEF51751CF88DA0E76DAEFFEAC888D4F4060B1A72BBE7D8D35"
 dependencies = [
   { id = "Bridge", name = "Bridge" },
   { id = "DeepBook", name = "DeepBook" },
   { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
   { id = "SuiSystem", name = "SuiSystem" },
+  { id = "Walrus", name = "Walrus" },
 ]
 
 [[move.package]]
@@ -50,6 +51,23 @@ source = { git = "https://github.com/MystenLabs/sui.git", rev = "9c04e1840eb5", 
 dependencies = [
   { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
+]
+
+[[move.package]]
+id = "WAL"
+source = { git = "https://github.com/MystenLabs/walrus.git", rev = "main", subdir = "contracts/wal" }
+
+dependencies = [
+  { id = "Sui", name = "Sui" },
+]
+
+[[move.package]]
+id = "Walrus"
+source = { git = "https://github.com/MystenLabs/walrus.git", rev = "main", subdir = "contracts/walrus" }
+
+dependencies = [
+  { id = "Sui", name = "Sui" },
+  { id = "WAL", name = "WAL" },
 ]
 
 [move.toolchain-version]
