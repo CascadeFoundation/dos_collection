@@ -158,8 +158,8 @@ public fun receive_and_store_blob(
     internal_store_blob(self, blob);
 }
 
-// Renew a Blob with a WAL coin. Does not require CollectionAdminCap to allow.
-// anyone to renew a Blob associate with this Collection.
+// Renew a Blob with a WAL coin. Does not require CollectionAdminCap to allow for
+// anyone to renew a Blob associated with the Collection.
 public fun renew_blob(
     self: &mut Collection,
     blob_id: u256,
