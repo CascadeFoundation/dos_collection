@@ -2,11 +2,12 @@
 
 [move]
 version = 3
-manifest_digest = "DAEFF87F181903F9BB959738E91E6FF993CFC19DFB02640CDBC59719F9589ABB"
-deps_digest = "52B406A7A21811BEF51751CF88DA0E76DAEFFEAC888D4F4060B1A72BBE7D8D35"
+manifest_digest = "C575DEF558D95F12C955A6B286813D6B262FE58D218450C7539570795E148F93"
+deps_digest = "CAFAD8A7CF51067FB4358215BECB86BD100DD64E57C2AC8A7AE7D74B688F5965"
 dependencies = [
   { id = "Bridge", name = "Bridge" },
   { id = "CascadeProtocol", name = "CascadeProtocol" },
+  { id = "DeepBook", name = "DeepBook" },
   { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
   { id = "SuiSystem", name = "SuiSystem" },
@@ -25,13 +26,23 @@ dependencies = [
 
 [[move.package]]
 id = "CascadeProtocol"
-source = { git = "https://github.com/cascadefoundation/cascade_protocol.git", rev = "main", subdir = "" }
+source = { git = "https://github.com/cascadefoundation/cascade_protocol.git", rev = "testnet", subdir = "" }
 
 dependencies = [
   { id = "Bridge", name = "Bridge" },
+  { id = "DeepBook", name = "DeepBook" },
   { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
   { id = "SuiSystem", name = "SuiSystem" },
+]
+
+[[move.package]]
+id = "DeepBook"
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "04f11afaf5e0", subdir = "crates/sui-framework/packages/deepbook" }
+
+dependencies = [
+  { id = "MoveStdlib", name = "MoveStdlib" },
+  { id = "Sui", name = "Sui" },
 ]
 
 [[move.package]]
@@ -73,7 +84,7 @@ dependencies = [
 ]
 
 [move.toolchain-version]
-compiler-version = "1.46.1"
+compiler-version = "1.46.0"
 edition = "2024.beta"
 flavor = "sui"
 
@@ -81,6 +92,6 @@ flavor = "sui"
 
 [env.testnet]
 chain-id = "4c78adac"
-original-published-id = "0xa0545513617ed01e9ff8b92f90aefc4165aab695e20361f8ed5634ba88e68f7d"
-latest-published-id = "0xa0545513617ed01e9ff8b92f90aefc4165aab695e20361f8ed5634ba88e68f7d"
+original-published-id = "0x7688a211fba0115f9eaccbdc99654380b2e12b4b924ae645f05d791cadaf7732"
+latest-published-id = "0x7688a211fba0115f9eaccbdc99654380b2e12b4b924ae645f05d791cadaf7732"
 published-version = "1"
