@@ -8,7 +8,6 @@ use sui::event::emit;
 use sui::package::{Self, Publisher};
 use sui::table::{Self, Table};
 use sui::transfer::Receiving;
-use sui::types;
 use wal::wal::WAL;
 use walrus::blob::Blob;
 use walrus::system::System;
