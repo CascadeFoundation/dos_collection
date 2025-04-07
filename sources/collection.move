@@ -57,12 +57,10 @@ public struct CollectionCreatedEvent has copy, drop {
 
 //=== Errors ===
 
-const ENotOneTimeWitness: u64 = 10000;
 const EInvalidCollectionAdminCap: u64 = 10001;
 const ECollectionAlreadyInitialized: u64 = 10002;
 const ECollectionNotInitialized: u64 = 10003;
 const EBlobNotReserved: u64 = 10005;
-const EInvalidOneTimeWitnessForType: u64 = 10006;
 const ETargetSupplyReached: u64 = 20001;
 const ENotBlobReservationState: u64 = 20002;
 const ENotItemRegistrationState: u64 = 20003;
