@@ -40,7 +40,8 @@ public struct CollectionAdminCap<phantom T: key + store> has key, store {
 }
 
 public enum CollectionState has copy, drop, store {
-    INITIALIZING { current_supply: u64, target_supply: u64 },
+    BLOB_RESERVATION { current_supply: u64, target_supply: u64 },
+    ITEM_REGISTRATION { current_supply: u64, target_supply: u64 },
     INITIALIZED { total_supply: u64 },
 }
 
@@ -55,14 +56,18 @@ public struct CollectionCreatedEvent has copy, drop {
 
 //=== Errors ===
 
-const ENotOneTimeWitness: u64 = 0;
-const EInvalidCollectionAdminCap: u64 = 1;
-const ECollectionAlreadyInitialized: u64 = 2;
-const ECollectionNotInitialized: u64 = 3;
-const ECollectionNotInitializing: u64 = 4;
-const EBlobNotReserved: u64 = 5;
-const EInvalidOneTimeWitnessForType: u64 = 6;
-const EInvalidItemType: u64 = 7;
+const ENotOneTimeWitness: u64 = 10000;
+const EInvalidCollectionAdminCap: u64 = 10001;
+const ECollectionAlreadyInitialized: u64 = 10002;
+const ECollectionNotInitialized: u64 = 10003;
+const EBlobNotReserved: u64 = 10005;
+const EInvalidOneTimeWitnessForType: u64 = 10006;
+const ETargetSupplyReached: u64 = 20001;
+const ENotBlobReservationState: u64 = 20002;
+const ENotItemRegistrationState: u64 = 20003;
+const ENotInitializedState: u64 = 30000;
+const EBlobReservationTargetSupplyNotReached: u64 = 20004;
+const EItemRegistrationTargetSupplyNotReached: u64 = 20004;
 
 //=== Init Function ===
 
@@ -93,7 +98,10 @@ public fun new<T: key + store, OTW: drop>(
 
     let collection = Collection {
         id: object::new(ctx),
-        state: CollectionState::INITIALIZING { current_supply: 0, target_supply: target_supply },
+        state: CollectionState::BLOB_RESERVATION {
+            current_supply: 0,
+            target_supply: target_supply,
+        },
         name: name,
         creator: creator,
         description: description,
@@ -126,20 +134,35 @@ public fun register_item<T: key + store>(
     item: &T,
 ) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
-    assert!(type_name::get<T>() == self.item_type, EInvalidItemType);
 
-    match (self.state) {
-        CollectionState::INITIALIZING { mut target_supply, .. } => {
+    match (&mut self.state) {
+        CollectionState::ITEM_REGISTRATION { current_supply, target_supply } => {
             // Assert that the quantity of registered items is less than the target supply.
-            assert!(self.items.length() < target_supply, ECollectionAlreadyInitialized);
+            assert!(self.items.length() < *target_supply, ECollectionAlreadyInitialized);
             // Register the item to the collection.
             self.items.add(number, object::id(item));
-            // Increment the target supply.
-            target_supply = target_supply + 1;
-            // If the quantity of registered items is equal to the target supply, set the state to initialized.
-            if (self.items.length() == target_supply) {
-                self.state = CollectionState::INITIALIZED { total_supply: target_supply }
-            };
+            // Set current supply to the new quantity of registered items.
+            *current_supply = self.items.length();
+        },
+        _ => abort ECollectionAlreadyInitialized,
+    };
+}
+
+public fun unregister_item<T: key + store>(
+    self: &mut Collection<T>,
+    cap: &CollectionAdminCap<T>,
+    number: u64,
+) {
+    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+
+    match (&mut self.state) {
+        CollectionState::ITEM_REGISTRATION { current_supply, target_supply } => {
+            // Assert that the quantity of registered items is less than the target supply.
+            assert!(self.items.length() < *target_supply, ECollectionAlreadyInitialized);
+            // Register the item to the collection.
+            self.items.remove(number);
+            // Set current supply to the new quantity of registered items.
+            *current_supply = self.items.length();
         },
         _ => abort ECollectionAlreadyInitialized,
     };
@@ -165,31 +188,111 @@ public fun renew_blob<T: key + store>(
     payment_coin: &mut Coin<WAL>,
     system: &mut System,
 ) {
-    let blob_opt_mut = self.blobs.borrow_mut(blob_id);
-    let blob_mut = blob_opt_mut.borrow_mut();
-    system.extend_blob(blob_mut, extension_epochs, payment_coin);
+    match (self.state) {
+        CollectionState::INITIALIZED { .. } => {
+            let blob_opt_mut = self.blobs.borrow_mut(blob_id);
+            let blob_mut = blob_opt_mut.borrow_mut();
+            system.extend_blob(blob_mut, extension_epochs, payment_coin);
+        },
+        _ => abort ENotInitializedState,
+    };
 }
 
 // Store a Blob in the Collection, requires a slot to be reserved first.
 // Does not require a CollectionAdminCap because only blobs with the correct digest can be stored.
 public fun store_blob<T: key + store>(self: &mut Collection<T>, blob: Blob) {
-    internal_store_blob(self, blob);
+    match (self.state) {
+        CollectionState::INITIALIZED { .. } => {
+            internal_store_blob(self, blob);
+        },
+        _ => abort ENotInitializedState,
+    };
+}
+
+// Swap a Blob with a new Blob, and burn the old one.
+public fun swap_blob<T: key + store>(self: &mut Collection<T>, blob: Blob) {
+    match (self.state) {
+        CollectionState::INITIALIZED { .. } => {
+            self.blobs.borrow_mut(blob.blob_id()).swap(blob).burn();
+        },
+        _ => abort ENotInitializedState,
+    }
 }
 
 // Reserve a storage slot for a Blob by storing the expected Blob ID mapped to option::none().
+//
+// Required State: BLOB_RESERVATION
 public fun reserve_blob_slot<T: key + store>(
     self: &mut Collection<T>,
     cap: &CollectionAdminCap<T>,
     blob_id: u256,
 ) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
-    self.blobs.add(blob_id, option::none());
+
+    match (&mut self.state) {
+        CollectionState::BLOB_RESERVATION { current_supply, target_supply } => {
+            assert!(*current_supply < *target_supply, ETargetSupplyReached);
+            self.blobs.add(blob_id, option::none());
+            *current_supply = self.blobs.length();
+        },
+        _ => abort ECollectionAlreadyInitialized,
+    };
+}
+
+// Unreserve a Blob slot by removing the Blob ID from the blobs table.
+//
+// Required State: BLOB_RESERVATION
+public fun unreserve_blob_slot<T: key + store>(self: &mut Collection<T>, blob_id: u256) {
+    match (&mut self.state) {
+        CollectionState::BLOB_RESERVATION { current_supply, .. } => {
+            self.blobs.remove(blob_id).destroy_none();
+            *current_supply = self.blobs.length();
+        },
+        _ => abort ECollectionAlreadyInitialized,
+    };
 }
 
 // Destroy a CollectionAdminCap to renounce ownership of the Collection.
-public fun collection_admin_cap_destroy<T: key + store>(cap: CollectionAdminCap<T>) {
-    let CollectionAdminCap { id, .. } = cap;
-    id.delete();
+// Only callable if the Collection is initialized.
+//
+// Required State: INITIALIZED
+public fun collection_admin_cap_destroy<T: key + store>(
+    cap: CollectionAdminCap<T>,
+    self: &mut Collection<T>,
+) {
+    match (self.state) {
+        CollectionState::INITIALIZED { .. } => {
+            let CollectionAdminCap { id, .. } = cap;
+            id.delete();
+        },
+        _ => abort ECollectionNotInitialized,
+    };
+}
+
+// Transition from BLOB_RESERVATION to ITEM_REGISTRATION state once target supply is reached.
+//
+// Required State: BLOB_RESERVATION
+public fun set_item_registration_state<T: key + store>(self: &mut Collection<T>) {
+    match (self.state) {
+        CollectionState::BLOB_RESERVATION { current_supply, target_supply } => {
+            assert!(current_supply == target_supply, EBlobReservationTargetSupplyNotReached);
+            self.state = CollectionState::ITEM_REGISTRATION { current_supply, target_supply };
+        },
+        _ => abort ENotBlobReservationState,
+    };
+}
+
+// Transition from ITEM_REGISTRATION to INITIALIZED state once target supply is reached.
+//
+// Required State: ITEM_REGISTRATION
+public fun set_initialized_state<T: key + store>(self: &mut Collection<T>) {
+    match (self.state) {
+        CollectionState::ITEM_REGISTRATION { current_supply, target_supply } => {
+            assert!(current_supply == target_supply, EItemRegistrationTargetSupplyNotReached);
+            self.state = CollectionState::INITIALIZED { total_supply: target_supply };
+        },
+        _ => abort ENotItemRegistrationState,
+    };
 }
 
 fun internal_store_blob<T: key + store>(self: &mut Collection<T>, blob: Blob) {
@@ -224,15 +327,17 @@ public fun collection_admin_cap_collection_id<T: key + store>(cap: &CollectionAd
 
 public fun current_supply<T: key + store>(self: &Collection<T>): u64 {
     match (self.state) {
-        CollectionState::INITIALIZED { total_supply, .. } => total_supply,
+        CollectionState::BLOB_RESERVATION { current_supply, .. } => current_supply,
+        CollectionState::ITEM_REGISTRATION { current_supply, .. } => current_supply,
         _ => abort ECollectionNotInitialized,
     }
 }
 
 public fun target_supply<T: key + store>(self: &Collection<T>): u64 {
     match (self.state) {
-        CollectionState::INITIALIZING { target_supply, .. } => target_supply,
-        _ => abort ECollectionNotInitializing,
+        CollectionState::BLOB_RESERVATION { target_supply, .. } => target_supply,
+        CollectionState::ITEM_REGISTRATION { target_supply, .. } => target_supply,
+        _ => abort ECollectionNotInitialized,
     }
 }
 
@@ -247,16 +352,23 @@ public fun assert_blob_reserved<T: key + store>(self: &Collection<T>, blob_id: u
     assert!(self.blobs.borrow(blob_id).is_some(), EBlobNotReserved);
 }
 
-public fun assert_state_initialized<T: key + store>(self: &Collection<T>) {
+public fun assert_state_blob_reservation<T: key + store>(self: &Collection<T>) {
     match (self.state) {
-        CollectionState::INITIALIZED { .. } => (),
-        _ => abort ECollectionNotInitialized,
+        CollectionState::BLOB_RESERVATION { .. } => (),
+        _ => abort ENotBlobReservationState,
     };
 }
 
-public fun assert_state_initializing<T: key + store>(self: &Collection<T>) {
+public fun assert_state_item_registration<T: key + store>(self: &Collection<T>) {
     match (self.state) {
-        CollectionState::INITIALIZING { .. } => (),
-        _ => abort ECollectionNotInitializing,
+        CollectionState::ITEM_REGISTRATION { .. } => (),
+        _ => abort ENotItemRegistrationState,
+    };
+}
+
+public fun assert_state_initialized<T: key + store>(self: &Collection<T>) {
+    match (self.state) {
+        CollectionState::INITIALIZED { .. } => (),
+        _ => abort ENotInitializedState,
     };
 }
