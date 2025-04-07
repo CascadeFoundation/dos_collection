@@ -21,7 +21,7 @@ public use fun collection_admin_cap_destroy as CollectionAdminCap.destroy;
 
 public struct COLLECTION has drop {}
 
-public struct Collection has key, store {
+public struct Collection<phantom T: key + store> has key, store {
     id: UID,
     state: CollectionState,
     creator: address,
@@ -34,10 +34,9 @@ public struct Collection has key, store {
     blobs: Table<u256, Option<Blob>>,
 }
 
-public struct CollectionAdminCap has key, store {
+public struct CollectionAdminCap<phantom T: key + store> has key, store {
     id: UID,
     collection_id: ID,
-    collection_type: TypeName,
 }
 
 public enum CollectionState has copy, drop, store {
@@ -83,7 +82,7 @@ public fun new<T: key + store, OTW: drop>(
     image_uri: String,
     target_supply: u64,
     ctx: &mut TxContext,
-): (Collection, CollectionAdminCap) {
+): (Collection<T>, CollectionAdminCap<T>) {
     assert!(types::is_one_time_witness(otw), ENotOneTimeWitness);
 
     let otw_type = type_name::get<OTW>();
@@ -105,10 +104,9 @@ public fun new<T: key + store, OTW: drop>(
         blobs: table::new(ctx),
     };
 
-    let collection_admin_cap = CollectionAdminCap {
+    let collection_admin_cap = CollectionAdminCap<T> {
         id: object::new(ctx),
         collection_id: collection.id.to_inner(),
-        collection_type: item_type,
     };
 
     emit(CollectionCreatedEvent {
@@ -122,8 +120,8 @@ public fun new<T: key + store, OTW: drop>(
 }
 
 public fun register_item<T: key + store>(
-    self: &mut Collection,
-    cap: &CollectionAdminCap,
+    self: &mut Collection<T>,
+    cap: &CollectionAdminCap<T>,
     number: u64,
     item: &T,
 ) {
@@ -148,9 +146,9 @@ public fun register_item<T: key + store>(
 }
 
 // Receive a Blob that's been sent to the Collection, and store it.
-public fun receive_and_store_blob(
-    self: &mut Collection,
-    cap: &CollectionAdminCap,
+public fun receive_and_store_blob<T: key + store>(
+    self: &mut Collection<T>,
+    cap: &CollectionAdminCap<T>,
     blob_to_receive: Receiving<Blob>,
 ) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
@@ -160,8 +158,8 @@ public fun receive_and_store_blob(
 
 // Renew a Blob with a WAL coin. Does not require CollectionAdminCap to allow for
 // anyone to renew a Blob associated with the Collection.
-public fun renew_blob(
-    self: &mut Collection,
+public fun renew_blob<T: key + store>(
+    self: &mut Collection<T>,
     blob_id: u256,
     extension_epochs: u32,
     payment_coin: &mut Coin<WAL>,
@@ -173,85 +171,93 @@ public fun renew_blob(
 }
 
 // Reserve a storage slot for a Blob by storing the expected Blob ID mapped to option::none().
-public fun reserve_blob(self: &mut Collection, cap: &CollectionAdminCap, blob_id: u256) {
+public fun reserve_blob<T: key + store>(
+    self: &mut Collection<T>,
+    cap: &CollectionAdminCap<T>,
+    blob_id: u256,
+) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
     self.blobs.add(blob_id, option::none());
 }
 
 // Store a Blob in the Collection, requires a slot to be reserved first.
-public fun store_blob(self: &mut Collection, cap: &CollectionAdminCap, blob: Blob) {
+public fun store_blob<T: key + store>(
+    self: &mut Collection<T>,
+    cap: &CollectionAdminCap<T>,
+    blob: Blob,
+) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
     internal_store_blob(self, blob);
 }
 
-public fun collection_admin_cap_destroy(cap: CollectionAdminCap) {
+public fun collection_admin_cap_destroy<T: key + store>(cap: CollectionAdminCap<T>) {
     let CollectionAdminCap { id, .. } = cap;
     id.delete();
 }
 
-fun internal_store_blob(self: &mut Collection, blob: Blob) {
+fun internal_store_blob<T: key + store>(self: &mut Collection<T>, blob: Blob) {
     self.blobs.borrow_mut(blob.blob_id()).fill(blob);
 }
 
 //=== View Functions ===
 
-public fun creator(self: &Collection): address {
+public fun creator<T: key + store>(self: &Collection<T>): address {
     self.creator
 }
 
-public fun description(self: &Collection): String {
+public fun description<T: key + store>(self: &Collection<T>): String {
     self.description
 }
 
-public fun external_url(self: &Collection): String {
+public fun external_url<T: key + store>(self: &Collection<T>): String {
     self.external_url
 }
 
-public fun image_uri(self: &Collection): String {
+public fun image_uri<T: key + store>(self: &Collection<T>): String {
     self.image_uri
 }
 
-public fun name(self: &Collection): String {
+public fun name<T: key + store>(self: &Collection<T>): String {
     self.name
 }
 
-public fun collection_admin_cap_collection_id(cap: &CollectionAdminCap): ID {
+public fun collection_admin_cap_collection_id<T: key + store>(cap: &CollectionAdminCap<T>): ID {
     cap.collection_id
 }
 
-public fun current_supply(self: &Collection): u64 {
+public fun current_supply<T: key + store>(self: &Collection<T>): u64 {
     match (self.state) {
         CollectionState::INITIALIZED { total_supply, .. } => total_supply,
         _ => abort ECollectionNotInitialized,
     }
 }
 
-public fun target_supply(self: &Collection): u64 {
+public fun target_supply<T: key + store>(self: &Collection<T>): u64 {
     match (self.state) {
         CollectionState::INITIALIZING { target_supply, .. } => target_supply,
         _ => abort ECollectionNotInitializing,
     }
 }
 
-public fun total_supply(self: &Collection): u64 {
+public fun total_supply<T: key + store>(self: &Collection<T>): u64 {
     match (self.state) {
         CollectionState::INITIALIZED { total_supply, .. } => total_supply,
         _ => abort ECollectionNotInitialized,
     }
 }
 
-public fun assert_blob_reserved(self: &Collection, blob_id: u256) {
+public fun assert_blob_reserved<T: key + store>(self: &Collection<T>, blob_id: u256) {
     assert!(self.blobs.borrow(blob_id).is_some(), EBlobNotReserved);
 }
 
-public fun assert_state_initialized(self: &Collection) {
+public fun assert_state_initialized<T: key + store>(self: &Collection<T>) {
     match (self.state) {
         CollectionState::INITIALIZED { .. } => (),
         _ => abort ECollectionNotInitialized,
     };
 }
 
-public fun assert_state_initializing(self: &Collection) {
+public fun assert_state_initializing<T: key + store>(self: &Collection<T>) {
     match (self.state) {
         CollectionState::INITIALIZING { .. } => (),
         _ => abort ECollectionNotInitializing,
