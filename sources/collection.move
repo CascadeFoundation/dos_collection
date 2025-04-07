@@ -5,7 +5,7 @@ use std::string::String;
 use std::type_name::{Self, TypeName};
 use sui::coin::Coin;
 use sui::event::emit;
-use sui::package;
+use sui::package::{Self, Publisher};
 use sui::table::{Self, Table};
 use sui::transfer::Receiving;
 use sui::types;
@@ -71,6 +71,7 @@ const ENotInitializedState: u64 = 30000;
 const EBlobReservationTargetSupplyNotReached: u64 = 20004;
 const EItemRegistrationTargetSupplyNotReached: u64 = 20004;
 const EInvalidItemType: u64 = 30001;
+const EInvalidPublisher: u64 = 30002;
 
 //=== Init Function ===
 
@@ -81,9 +82,9 @@ fun init(otw: COLLECTION, ctx: &mut TxContext) {
 //=== Public Functions ===
 
 // Create a new collection.
-public fun new<T: key + store, OTW: drop>(
+public fun new<T: key + store>(
     cap: MintCap<Collection>,
-    otw: &OTW,
+    publisher: &Publisher,
     creator: address,
     name: String,
     description: String,
@@ -92,13 +93,9 @@ public fun new<T: key + store, OTW: drop>(
     target_supply: u64,
     ctx: &mut TxContext,
 ): (Collection, CollectionAdminCap) {
-    assert!(types::is_one_time_witness(otw), ENotOneTimeWitness);
+    assert!(publisher.from_module<T>(), EInvalidPublisher);
 
-    let otw_type = type_name::get<OTW>();
     let item_type = type_name::get<T>();
-
-    assert!(otw_type.get_address() == item_type.get_address(), EInvalidOneTimeWitnessForType);
-    assert!(otw_type.get_module() == item_type.get_module(), EInvalidOneTimeWitnessForType);
 
     let collection = Collection {
         id: object::new(ctx),
