@@ -170,8 +170,14 @@ public fun renew_blob<T: key + store>(
     system.extend_blob(blob_mut, extension_epochs, payment_coin);
 }
 
+// Store a Blob in the Collection, requires a slot to be reserved first.
+// Does not require a CollectionAdminCap because only blobs with the correct digest can be stored.
+public fun store_blob<T: key + store>(self: &mut Collection<T>, blob: Blob) {
+    internal_store_blob(self, blob);
+}
+
 // Reserve a storage slot for a Blob by storing the expected Blob ID mapped to option::none().
-public fun reserve_blob<T: key + store>(
+public fun reserve_blob_slot<T: key + store>(
     self: &mut Collection<T>,
     cap: &CollectionAdminCap<T>,
     blob_id: u256,
@@ -180,16 +186,7 @@ public fun reserve_blob<T: key + store>(
     self.blobs.add(blob_id, option::none());
 }
 
-// Store a Blob in the Collection, requires a slot to be reserved first.
-public fun store_blob<T: key + store>(
-    self: &mut Collection<T>,
-    cap: &CollectionAdminCap<T>,
-    blob: Blob,
-) {
-    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
-    internal_store_blob(self, blob);
-}
-
+// Destroy a CollectionAdminCap to renounce ownership of the Collection.
 public fun collection_admin_cap_destroy<T: key + store>(cap: CollectionAdminCap<T>) {
     let CollectionAdminCap { id, .. } = cap;
     id.delete();
