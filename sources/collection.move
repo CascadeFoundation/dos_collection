@@ -1,5 +1,6 @@
 module dos_collection::collection;
 
+use cascade_protocol::mint_cap::MintCap;
 use std::string::String;
 use std::type_name::{Self, TypeName};
 use sui::coin::Coin;
@@ -21,22 +22,23 @@ public use fun collection_admin_cap_destroy as CollectionAdminCap.destroy;
 
 public struct COLLECTION has drop {}
 
-public struct Collection<phantom T: key + store> has key, store {
+public struct Collection has key, store {
     id: UID,
+    item_type: TypeName,
     state: CollectionState,
     creator: address,
     name: String,
     description: String,
-    item_type: TypeName,
     external_url: String,
     image_uri: String,
     items: Table<u64, ID>,
     blobs: Table<u256, Option<Blob>>,
 }
 
-public struct CollectionAdminCap<phantom T: key + store> has key, store {
+public struct CollectionAdminCap has key, store {
     id: UID,
     collection_id: ID,
+    item_type: TypeName,
 }
 
 public enum CollectionState has copy, drop, store {
@@ -51,7 +53,7 @@ public struct CollectionCreatedEvent has copy, drop {
     creator: address,
     collection_id: ID,
     collection_admin_cap_id: ID,
-    collection_type: TypeName,
+    item_type: TypeName,
 }
 
 //=== Errors ===
@@ -68,6 +70,7 @@ const ENotItemRegistrationState: u64 = 20003;
 const ENotInitializedState: u64 = 30000;
 const EBlobReservationTargetSupplyNotReached: u64 = 20004;
 const EItemRegistrationTargetSupplyNotReached: u64 = 20004;
+const EInvalidItemType: u64 = 30001;
 
 //=== Init Function ===
 
@@ -79,15 +82,16 @@ fun init(otw: COLLECTION, ctx: &mut TxContext) {
 
 // Create a new collection.
 public fun new<T: key + store, OTW: drop>(
+    cap: MintCap<Collection>,
     otw: &OTW,
-    name: String,
     creator: address,
+    name: String,
     description: String,
     external_url: String,
     image_uri: String,
     target_supply: u64,
     ctx: &mut TxContext,
-): (Collection<T>, CollectionAdminCap<T>) {
+): (Collection, CollectionAdminCap) {
     assert!(types::is_one_time_witness(otw), ENotOneTimeWitness);
 
     let otw_type = type_name::get<OTW>();
@@ -112,28 +116,32 @@ public fun new<T: key + store, OTW: drop>(
         blobs: table::new(ctx),
     };
 
-    let collection_admin_cap = CollectionAdminCap<T> {
+    let collection_admin_cap = CollectionAdminCap {
         id: object::new(ctx),
         collection_id: collection.id.to_inner(),
+        item_type: item_type,
     };
 
     emit(CollectionCreatedEvent {
+        creator: creator,
         collection_id: collection.id.to_inner(),
         collection_admin_cap_id: object::id(&collection_admin_cap),
-        collection_type: item_type,
-        creator: creator,
+        item_type: item_type,
     });
+
+    cap.destroy();
 
     (collection, collection_admin_cap)
 }
 
 public fun register_item<T: key + store>(
-    self: &mut Collection<T>,
-    cap: &CollectionAdminCap<T>,
+    self: &mut Collection,
+    cap: &CollectionAdminCap,
     number: u64,
     item: &T,
 ) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    assert!(cap.item_type == type_name::get<T>(), EInvalidItemType);
 
     match (&mut self.state) {
         CollectionState::ITEM_REGISTRATION { current_supply, target_supply } => {
@@ -148,11 +156,7 @@ public fun register_item<T: key + store>(
     };
 }
 
-public fun unregister_item<T: key + store>(
-    self: &mut Collection<T>,
-    cap: &CollectionAdminCap<T>,
-    number: u64,
-) {
+public fun unregister_item(self: &mut Collection, cap: &CollectionAdminCap, number: u64) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
 
     match (&mut self.state) {
@@ -169,9 +173,9 @@ public fun unregister_item<T: key + store>(
 }
 
 // Receive a Blob that's been sent to the Collection, and store it.
-public fun receive_and_store_blob<T: key + store>(
-    self: &mut Collection<T>,
-    cap: &CollectionAdminCap<T>,
+public fun receive_and_store_blob(
+    self: &mut Collection,
+    cap: &CollectionAdminCap,
     blob_to_receive: Receiving<Blob>,
 ) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
@@ -181,8 +185,8 @@ public fun receive_and_store_blob<T: key + store>(
 
 // Renew a Blob with a WAL coin. Does not require CollectionAdminCap to allow for
 // anyone to renew a Blob associated with the Collection.
-public fun renew_blob<T: key + store>(
-    self: &mut Collection<T>,
+public fun renew_blob(
+    self: &mut Collection,
     blob_id: u256,
     extension_epochs: u32,
     payment_coin: &mut Coin<WAL>,
@@ -200,7 +204,7 @@ public fun renew_blob<T: key + store>(
 
 // Store a Blob in the Collection, requires a slot to be reserved first.
 // Does not require a CollectionAdminCap because only blobs with the correct digest can be stored.
-public fun store_blob<T: key + store>(self: &mut Collection<T>, blob: Blob) {
+public fun store_blob(self: &mut Collection, blob: Blob) {
     match (self.state) {
         CollectionState::INITIALIZED { .. } => {
             internal_store_blob(self, blob);
@@ -210,7 +214,7 @@ public fun store_blob<T: key + store>(self: &mut Collection<T>, blob: Blob) {
 }
 
 // Swap a Blob with a new Blob, and burn the old one.
-public fun swap_blob<T: key + store>(self: &mut Collection<T>, blob: Blob) {
+public fun swap_blob(self: &mut Collection, blob: Blob) {
     match (self.state) {
         CollectionState::INITIALIZED { .. } => {
             self.blobs.borrow_mut(blob.blob_id()).swap(blob).burn();
@@ -222,11 +226,7 @@ public fun swap_blob<T: key + store>(self: &mut Collection<T>, blob: Blob) {
 // Reserve a storage slot for a Blob by storing the expected Blob ID mapped to option::none().
 //
 // Required State: BLOB_RESERVATION
-public fun reserve_blob_slot<T: key + store>(
-    self: &mut Collection<T>,
-    cap: &CollectionAdminCap<T>,
-    blob_id: u256,
-) {
+public fun reserve_blob_slot(self: &mut Collection, cap: &CollectionAdminCap, blob_id: u256) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
 
     match (&mut self.state) {
@@ -242,7 +242,7 @@ public fun reserve_blob_slot<T: key + store>(
 // Unreserve a Blob slot by removing the Blob ID from the blobs table.
 //
 // Required State: BLOB_RESERVATION
-public fun unreserve_blob_slot<T: key + store>(self: &mut Collection<T>, blob_id: u256) {
+public fun unreserve_blob_slot(self: &mut Collection, blob_id: u256) {
     match (&mut self.state) {
         CollectionState::BLOB_RESERVATION { current_supply, .. } => {
             self.blobs.remove(blob_id).destroy_none();
@@ -256,10 +256,7 @@ public fun unreserve_blob_slot<T: key + store>(self: &mut Collection<T>, blob_id
 // Only callable if the Collection is initialized.
 //
 // Required State: INITIALIZED
-public fun collection_admin_cap_destroy<T: key + store>(
-    cap: CollectionAdminCap<T>,
-    self: &mut Collection<T>,
-) {
+public fun collection_admin_cap_destroy(cap: CollectionAdminCap, self: &mut Collection) {
     match (self.state) {
         CollectionState::INITIALIZED { .. } => {
             let CollectionAdminCap { id, .. } = cap;
@@ -272,7 +269,7 @@ public fun collection_admin_cap_destroy<T: key + store>(
 // Transition from BLOB_RESERVATION to ITEM_REGISTRATION state once target supply is reached.
 //
 // Required State: BLOB_RESERVATION
-public fun set_item_registration_state<T: key + store>(self: &mut Collection<T>) {
+public fun set_item_registration_state(self: &mut Collection) {
     match (self.state) {
         CollectionState::BLOB_RESERVATION { current_supply, target_supply } => {
             assert!(current_supply == target_supply, EBlobReservationTargetSupplyNotReached);
@@ -285,7 +282,7 @@ public fun set_item_registration_state<T: key + store>(self: &mut Collection<T>)
 // Transition from ITEM_REGISTRATION to INITIALIZED state once target supply is reached.
 //
 // Required State: ITEM_REGISTRATION
-public fun set_initialized_state<T: key + store>(self: &mut Collection<T>) {
+public fun set_initialized_state(self: &mut Collection) {
     match (self.state) {
         CollectionState::ITEM_REGISTRATION { current_supply, target_supply } => {
             assert!(current_supply == target_supply, EItemRegistrationTargetSupplyNotReached);
@@ -295,37 +292,37 @@ public fun set_initialized_state<T: key + store>(self: &mut Collection<T>) {
     };
 }
 
-fun internal_store_blob<T: key + store>(self: &mut Collection<T>, blob: Blob) {
+fun internal_store_blob(self: &mut Collection, blob: Blob) {
     self.blobs.borrow_mut(blob.blob_id()).fill(blob);
 }
 
 //=== View Functions ===
 
-public fun creator<T: key + store>(self: &Collection<T>): address {
+public fun creator(self: &Collection): address {
     self.creator
 }
 
-public fun description<T: key + store>(self: &Collection<T>): String {
+public fun description(self: &Collection): String {
     self.description
 }
 
-public fun external_url<T: key + store>(self: &Collection<T>): String {
+public fun external_url(self: &Collection): String {
     self.external_url
 }
 
-public fun image_uri<T: key + store>(self: &Collection<T>): String {
+public fun image_uri(self: &Collection): String {
     self.image_uri
 }
 
-public fun name<T: key + store>(self: &Collection<T>): String {
+public fun name(self: &Collection): String {
     self.name
 }
 
-public fun collection_admin_cap_collection_id<T: key + store>(cap: &CollectionAdminCap<T>): ID {
+public fun collection_admin_cap_collection_id(cap: &CollectionAdminCap): ID {
     cap.collection_id
 }
 
-public fun current_supply<T: key + store>(self: &Collection<T>): u64 {
+public fun current_supply(self: &Collection): u64 {
     match (self.state) {
         CollectionState::BLOB_RESERVATION { current_supply, .. } => current_supply,
         CollectionState::ITEM_REGISTRATION { current_supply, .. } => current_supply,
@@ -333,7 +330,7 @@ public fun current_supply<T: key + store>(self: &Collection<T>): u64 {
     }
 }
 
-public fun target_supply<T: key + store>(self: &Collection<T>): u64 {
+public fun target_supply(self: &Collection): u64 {
     match (self.state) {
         CollectionState::BLOB_RESERVATION { target_supply, .. } => target_supply,
         CollectionState::ITEM_REGISTRATION { target_supply, .. } => target_supply,
@@ -341,32 +338,32 @@ public fun target_supply<T: key + store>(self: &Collection<T>): u64 {
     }
 }
 
-public fun total_supply<T: key + store>(self: &Collection<T>): u64 {
+public fun total_supply(self: &Collection): u64 {
     match (self.state) {
         CollectionState::INITIALIZED { total_supply, .. } => total_supply,
         _ => abort ECollectionNotInitialized,
     }
 }
 
-public fun assert_blob_reserved<T: key + store>(self: &Collection<T>, blob_id: u256) {
+public fun assert_blob_reserved(self: &Collection, blob_id: u256) {
     assert!(self.blobs.borrow(blob_id).is_some(), EBlobNotReserved);
 }
 
-public fun assert_state_blob_reservation<T: key + store>(self: &Collection<T>) {
+public fun assert_state_blob_reservation(self: &Collection) {
     match (self.state) {
         CollectionState::BLOB_RESERVATION { .. } => (),
         _ => abort ENotBlobReservationState,
     };
 }
 
-public fun assert_state_item_registration<T: key + store>(self: &Collection<T>) {
+public fun assert_state_item_registration(self: &Collection) {
     match (self.state) {
         CollectionState::ITEM_REGISTRATION { .. } => (),
         _ => abort ENotItemRegistrationState,
     };
 }
 
-public fun assert_state_initialized<T: key + store>(self: &Collection<T>) {
+public fun assert_state_initialized(self: &Collection) {
     match (self.state) {
         CollectionState::INITIALIZED { .. } => (),
         _ => abort ENotInitializedState,

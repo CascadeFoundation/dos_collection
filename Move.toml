@@ -6,6 +6,7 @@ authors = ["Cascade Foundation (dos@cascade.foundation)"]
 
 [dependencies]
 Walrus = { git = "https://github.com/MystenLabs/walrus.git", subdir = "contracts/walrus", rev = "main" }
+CascadeProtocol = { git = "https://github.com/cascadefoundation/cascade_protocol.git", rev = "main" }
 
 [addresses]
 dos_collection = "0x0"
