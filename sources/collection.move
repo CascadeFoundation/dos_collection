@@ -4,6 +4,7 @@ use cascade_protocol::mint_cap::MintCap;
 use std::string::String;
 use std::type_name::{Self, TypeName};
 use sui::coin::Coin;
+use sui::display;
 use sui::event::emit;
 use sui::package::{Self, Publisher};
 use sui::table::{Self, Table};
@@ -48,11 +49,49 @@ public enum CollectionState has copy, drop, store {
 
 //=== Events ===
 
+public struct CollectionBlobRenewedEvent has copy, drop {
+    collection_id: ID,
+    blob_id: u256,
+    extension_epochs: u32,
+}
+
 public struct CollectionCreatedEvent has copy, drop {
     creator: address,
     collection_id: ID,
     collection_admin_cap_id: ID,
     item_type: TypeName,
+}
+
+public struct CollectionItemRegisteredEvent has copy, drop {
+    collection_id: ID,
+    item_id: ID,
+    item_number: u64,
+}
+
+public struct CollectionItemUnregisteredEvent has copy, drop {
+    collection_id: ID,
+    item_id: ID,
+    item_number: u64,
+}
+
+public struct CollectionBlobStoredEvent has copy, drop {
+    collection_id: ID,
+    blob_id: u256,
+}
+
+public struct CollectionBlobSwappedEvent has copy, drop {
+    collection_id: ID,
+    blob_id: u256,
+}
+
+public struct CollectionBlobSlotReservedEvent has copy, drop {
+    collection_id: ID,
+    blob_id: u256,
+}
+
+public struct CollectionBlobSlotUnreservedEvent has copy, drop {
+    collection_id: ID,
+    blob_id: u256,
 }
 
 //=== Errors ===
@@ -73,7 +112,18 @@ const EInvalidPublisher: u64 = 30002;
 //=== Init Function ===
 
 fun init(otw: COLLECTION, ctx: &mut TxContext) {
-    package::claim_and_keep(otw, ctx);
+    let publisher = package::claim(otw, ctx);
+
+    let mut display = display::new<Collection>(&publisher, ctx);
+    display.add(b"item_type".to_string(), b"{item_type}".to_string());
+    display.add(b"creator".to_string(), b"{creator}".to_string());
+    display.add(b"name".to_string(), b"{name}".to_string());
+    display.add(b"description".to_string(), b"{description}".to_string());
+    display.add(b"external_url".to_string(), b"{external_url}".to_string());
+    display.add(b"image_uri".to_string(), b"{image_uri}".to_string());
+
+    transfer::public_transfer(display, ctx.sender());
+    transfer::public_transfer(publisher, ctx.sender());
 }
 
 //=== Public Functions ===
@@ -145,6 +195,12 @@ public fun register_item<T: key + store>(
             self.items.add(number, object::id(item));
             // Set current supply to the new quantity of registered items.
             *current_supply = self.items.length();
+
+            emit(CollectionItemRegisteredEvent {
+                collection_id: self.id.to_inner(),
+                item_id: object::id(item),
+                item_number: number,
+            });
         },
         _ => abort ECollectionAlreadyInitialized,
     };
@@ -158,9 +214,15 @@ public fun unregister_item(self: &mut Collection, cap: &CollectionAdminCap, numb
             // Assert that the quantity of registered items is less than the target supply.
             assert!(self.items.length() < *target_supply, ECollectionAlreadyInitialized);
             // Register the item to the collection.
-            self.items.remove(number);
+            let item_id = self.items.remove(number);
             // Set current supply to the new quantity of registered items.
             *current_supply = self.items.length();
+
+            emit(CollectionItemUnregisteredEvent {
+                collection_id: self.id.to_inner(),
+                item_id: item_id,
+                item_number: number,
+            });
         },
         _ => abort ECollectionAlreadyInitialized,
     };
@@ -191,6 +253,12 @@ public fun renew_blob(
             let blob_opt_mut = self.blobs.borrow_mut(blob_id);
             let blob_mut = blob_opt_mut.borrow_mut();
             system.extend_blob(blob_mut, extension_epochs, payment_coin);
+
+            emit(CollectionBlobRenewedEvent {
+                collection_id: self.id.to_inner(),
+                blob_id: blob_id,
+                extension_epochs: extension_epochs,
+            });
         },
         _ => abort ENotInitializedState,
     };
@@ -211,6 +279,11 @@ public fun store_blob(self: &mut Collection, blob: Blob) {
 public fun swap_blob(self: &mut Collection, blob: Blob) {
     match (self.state) {
         CollectionState::INITIALIZED { .. } => {
+            emit(CollectionBlobSwappedEvent {
+                collection_id: self.id.to_inner(),
+                blob_id: blob.blob_id(),
+            });
+
             self.blobs.borrow_mut(blob.blob_id()).swap(blob).burn();
         },
         _ => abort ENotInitializedState,
@@ -228,6 +301,11 @@ public fun reserve_blob_slot(self: &mut Collection, cap: &CollectionAdminCap, bl
             assert!(*current_supply < *target_supply, ETargetSupplyReached);
             self.blobs.add(blob_id, option::none());
             *current_supply = self.blobs.length();
+
+            emit(CollectionBlobSlotReservedEvent {
+                collection_id: self.id.to_inner(),
+                blob_id: blob_id,
+            });
         },
         _ => abort ECollectionAlreadyInitialized,
     };
@@ -241,6 +319,11 @@ public fun unreserve_blob_slot(self: &mut Collection, blob_id: u256) {
         CollectionState::BLOB_RESERVATION { current_supply, .. } => {
             self.blobs.remove(blob_id).destroy_none();
             *current_supply = self.blobs.length();
+
+            emit(CollectionBlobSlotUnreservedEvent {
+                collection_id: self.id.to_inner(),
+                blob_id: blob_id,
+            });
         },
         _ => abort ECollectionAlreadyInitialized,
     };
@@ -287,6 +370,10 @@ public fun set_initialized_state(self: &mut Collection) {
 }
 
 fun internal_store_blob(self: &mut Collection, blob: Blob) {
+    emit(CollectionBlobStoredEvent {
+        collection_id: self.id.to_inner(),
+        blob_id: blob.blob_id(),
+    });
     self.blobs.borrow_mut(blob.blob_id()).fill(blob);
 }
 
@@ -362,4 +449,9 @@ public fun assert_state_initialized(self: &Collection) {
         CollectionState::INITIALIZED { .. } => (),
         _ => abort ENotInitializedState,
     };
+}
+
+// Assert that a CollectionAdminCap is valid for the Collection.
+public fun assert_valid_collection_admin_cap(self: &Collection, cap: &CollectionAdminCap) {
+    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
 }
