@@ -5,7 +5,7 @@ license = "Cascade DOL 1.0"
 authors = ["Cascade Foundation (dos@cascade.foundation)"]
 
 [dependencies]
-CascadeProtocol = { git = "https://github.com/cascadefoundation/cascade_protocol.git", rev = "testnet" }
+CascadeProtocol = { git = "https://github.com/cascadefoundation/cascade_protocol.git", subdir = "package",  rev = "testnet" }
 Walrus = { git = "https://github.com/MystenLabs/walrus.git", subdir = "testnet-contracts/walrus", rev = "main"}
 
 [addresses]
