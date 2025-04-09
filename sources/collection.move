@@ -31,6 +31,7 @@ public struct Collection has key, store {
     description: String,
     external_url: String,
     image_uri: String,
+    total_supply: u64,
     items: Table<u64, ID>,
     blobs: Table<u256, Option<Blob>>,
 }
@@ -42,9 +43,8 @@ public struct CollectionAdminCap has key, store {
 }
 
 public enum CollectionState has copy, drop, store {
-    BLOB_RESERVATION { current_supply: u64, target_supply: u64 },
-    ITEM_REGISTRATION { current_supply: u64, target_supply: u64 },
-    INITIALIZED { total_supply: u64 },
+    ITEM_REGISTRATION { registered_count: u64 },
+    INITIALIZED,
 }
 
 //=== Events ===
@@ -87,6 +87,11 @@ public struct CollectionBlobSwappedEvent has copy, drop {
 public struct CollectionBlobSlotReservedEvent has copy, drop {
     collection_id: ID,
     blob_id: u256,
+}
+
+public struct CollectionBlobSlotsReservedEvent has copy, drop {
+    collection_id: ID,
+    blob_ids: vector<u256>,
 }
 
 public struct CollectionBlobSlotUnreservedEvent has copy, drop {
@@ -137,7 +142,7 @@ public fun new<T: key + store>(
     description: String,
     external_url: String,
     image_uri: String,
-    target_supply: u64,
+    total_supply: u64,
     ctx: &mut TxContext,
 ): (Collection, CollectionAdminCap) {
     assert!(publisher.from_module<T>(), EInvalidPublisher);
@@ -146,16 +151,14 @@ public fun new<T: key + store>(
 
     let collection = Collection {
         id: object::new(ctx),
-        state: CollectionState::BLOB_RESERVATION {
-            current_supply: 0,
-            target_supply: target_supply,
-        },
+        state: CollectionState::ITEM_REGISTRATION { registered_count: 0 },
         name: name,
         creator: creator,
         description: description,
         item_type: item_type,
         external_url: external_url,
         image_uri: image_uri,
+        total_supply: total_supply,
         items: table::new(ctx),
         blobs: table::new(ctx),
     };
@@ -188,13 +191,13 @@ public fun register_item<T: key + store>(
     assert!(cap.item_type == type_name::get<T>(), EInvalidItemType);
 
     match (&mut self.state) {
-        CollectionState::ITEM_REGISTRATION { current_supply, target_supply } => {
+        CollectionState::ITEM_REGISTRATION { registered_count } => {
             // Assert that the quantity of registered items is less than the target supply.
-            assert!(self.items.length() < *target_supply, ECollectionAlreadyInitialized);
+            assert!(self.items.length() < self.total_supply, ECollectionAlreadyInitialized);
             // Register the item to the collection.
             self.items.add(number, object::id(item));
             // Set current supply to the new quantity of registered items.
-            *current_supply = self.items.length();
+            *registered_count = self.items.length();
 
             emit(CollectionItemRegisteredEvent {
                 collection_id: self.id.to_inner(),
@@ -210,13 +213,13 @@ public fun unregister_item(self: &mut Collection, cap: &CollectionAdminCap, numb
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
 
     match (&mut self.state) {
-        CollectionState::ITEM_REGISTRATION { current_supply, target_supply } => {
+        CollectionState::ITEM_REGISTRATION { registered_count } => {
             // Assert that the quantity of registered items is less than the target supply.
-            assert!(self.items.length() < *target_supply, ECollectionAlreadyInitialized);
+            assert!(self.items.length() < self.total_supply, ECollectionAlreadyInitialized);
             // Register the item to the collection.
             let item_id = self.items.remove(number);
             // Set current supply to the new quantity of registered items.
-            *current_supply = self.items.length();
+            *registered_count = self.items.length();
 
             emit(CollectionItemUnregisteredEvent {
                 collection_id: self.id.to_inner(),
@@ -248,85 +251,64 @@ public fun renew_blob(
     payment_coin: &mut Coin<WAL>,
     system: &mut System,
 ) {
-    match (self.state) {
-        CollectionState::INITIALIZED { .. } => {
-            let blob_opt_mut = self.blobs.borrow_mut(blob_id);
-            let blob_mut = blob_opt_mut.borrow_mut();
-            system.extend_blob(blob_mut, extension_epochs, payment_coin);
+    let blob_mut = self.blobs.borrow_mut(blob_id).borrow_mut();
 
-            emit(CollectionBlobRenewedEvent {
-                collection_id: self.id.to_inner(),
-                blob_id: blob_id,
-                extension_epochs: extension_epochs,
-            });
-        },
-        _ => abort ENotInitializedState,
-    };
+    system.extend_blob(blob_mut, extension_epochs, payment_coin);
+
+    emit(CollectionBlobRenewedEvent {
+        collection_id: self.id.to_inner(),
+        blob_id: blob_id,
+        extension_epochs: extension_epochs,
+    });
 }
 
 // Store a Blob in the Collection, requires a slot to be reserved first.
 // Does not require a CollectionAdminCap because only blobs with the correct digest can be stored.
 public fun store_blob(self: &mut Collection, blob: Blob) {
-    match (self.state) {
-        CollectionState::INITIALIZED { .. } => {
-            internal_store_blob(self, blob);
-        },
-        _ => abort ENotInitializedState,
-    };
+    internal_store_blob(self, blob);
 }
 
 // Swap a Blob with a new Blob, and burn the old one.
 public fun swap_blob(self: &mut Collection, blob: Blob) {
-    match (self.state) {
-        CollectionState::INITIALIZED { .. } => {
-            emit(CollectionBlobSwappedEvent {
-                collection_id: self.id.to_inner(),
-                blob_id: blob.blob_id(),
-            });
-
-            self.blobs.borrow_mut(blob.blob_id()).swap(blob).burn();
-        },
-        _ => abort ENotInitializedState,
-    }
+    emit(CollectionBlobSwappedEvent {
+        collection_id: self.id.to_inner(),
+        blob_id: blob.blob_id(),
+    });
+    self.blobs.borrow_mut(blob.blob_id()).swap(blob).burn();
 }
 
 // Reserve a storage slot for a Blob by storing the expected Blob ID mapped to option::none().
 //
 // Required State: BLOB_RESERVATION
+#[allow(unused_assignment)]
 public fun reserve_blob_slot(self: &mut Collection, cap: &CollectionAdminCap, blob_id: u256) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    self.internal_reserve_blob_slot(blob_id);
+}
 
-    match (&mut self.state) {
-        CollectionState::BLOB_RESERVATION { current_supply, target_supply } => {
-            assert!(*current_supply < *target_supply, ETargetSupplyReached);
-            self.blobs.add(blob_id, option::none());
-            *current_supply = self.blobs.length();
-
-            emit(CollectionBlobSlotReservedEvent {
-                collection_id: self.id.to_inner(),
-                blob_id: blob_id,
-            });
-        },
-        _ => abort ECollectionAlreadyInitialized,
-    };
+#[allow(unused_assignment)]
+public fun reserve_blob_slots(
+    self: &mut Collection,
+    cap: &CollectionAdminCap,
+    blob_ids: vector<u256>,
+) {
+    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    blob_ids.destroy!(|blob_id| self.internal_reserve_blob_slot(blob_id));
+    emit(CollectionBlobSlotsReservedEvent {
+        collection_id: self.id.to_inner(),
+        blob_ids: blob_ids,
+    });
 }
 
 // Unreserve a Blob slot by removing the Blob ID from the blobs table.
 //
 // Required State: BLOB_RESERVATION
 public fun unreserve_blob_slot(self: &mut Collection, blob_id: u256) {
-    match (&mut self.state) {
-        CollectionState::BLOB_RESERVATION { current_supply, .. } => {
-            self.blobs.remove(blob_id).destroy_none();
-            *current_supply = self.blobs.length();
-
-            emit(CollectionBlobSlotUnreservedEvent {
-                collection_id: self.id.to_inner(),
-                blob_id: blob_id,
-            });
-        },
-        _ => abort ECollectionAlreadyInitialized,
-    };
+    self.blobs.remove(blob_id).destroy_none();
+    emit(CollectionBlobSlotUnreservedEvent {
+        collection_id: self.id.to_inner(),
+        blob_id: blob_id,
+    });
 }
 
 // Destroy a CollectionAdminCap to renounce ownership of the Collection.
@@ -335,24 +317,11 @@ public fun unreserve_blob_slot(self: &mut Collection, blob_id: u256) {
 // Required State: INITIALIZED
 public fun collection_admin_cap_destroy(cap: CollectionAdminCap, self: &mut Collection) {
     match (self.state) {
-        CollectionState::INITIALIZED { .. } => {
+        CollectionState::INITIALIZED => {
             let CollectionAdminCap { id, .. } = cap;
             id.delete();
         },
         _ => abort ECollectionNotInitialized,
-    };
-}
-
-// Transition from BLOB_RESERVATION to ITEM_REGISTRATION state once target supply is reached.
-//
-// Required State: BLOB_RESERVATION
-public fun set_item_registration_state(self: &mut Collection) {
-    match (self.state) {
-        CollectionState::BLOB_RESERVATION { current_supply, target_supply } => {
-            assert!(current_supply == target_supply, EBlobReservationTargetSupplyNotReached);
-            self.state = CollectionState::ITEM_REGISTRATION { current_supply, target_supply };
-        },
-        _ => abort ENotBlobReservationState,
     };
 }
 
@@ -361,12 +330,20 @@ public fun set_item_registration_state(self: &mut Collection) {
 // Required State: ITEM_REGISTRATION
 public fun set_initialized_state(self: &mut Collection) {
     match (self.state) {
-        CollectionState::ITEM_REGISTRATION { current_supply, target_supply } => {
-            assert!(current_supply == target_supply, EItemRegistrationTargetSupplyNotReached);
-            self.state = CollectionState::INITIALIZED { total_supply: target_supply };
+        CollectionState::ITEM_REGISTRATION { registered_count } => {
+            assert!(registered_count == self.total_supply, EItemRegistrationTargetSupplyNotReached);
+            self.state = CollectionState::INITIALIZED;
         },
         _ => abort ENotItemRegistrationState,
     };
+}
+
+fun internal_reserve_blob_slot(self: &mut Collection, blob_id: u256) {
+    self.blobs.add(blob_id, option::none());
+    emit(CollectionBlobSlotReservedEvent {
+        collection_id: self.id.to_inner(),
+        blob_id: blob_id,
+    });
 }
 
 fun internal_store_blob(self: &mut Collection, blob: Blob) {
@@ -403,38 +380,21 @@ public fun collection_admin_cap_collection_id(cap: &CollectionAdminCap): ID {
     cap.collection_id
 }
 
-public fun current_supply(self: &Collection): u64 {
+public fun registered_count(self: &Collection): u64 {
     match (self.state) {
-        CollectionState::BLOB_RESERVATION { current_supply, .. } => current_supply,
-        CollectionState::ITEM_REGISTRATION { current_supply, .. } => current_supply,
-        _ => abort ECollectionNotInitialized,
-    }
-}
-
-public fun target_supply(self: &Collection): u64 {
-    match (self.state) {
-        CollectionState::BLOB_RESERVATION { target_supply, .. } => target_supply,
-        CollectionState::ITEM_REGISTRATION { target_supply, .. } => target_supply,
+        CollectionState::ITEM_REGISTRATION { registered_count, .. } => registered_count,
         _ => abort ECollectionNotInitialized,
     }
 }
 
 public fun total_supply(self: &Collection): u64 {
-    match (self.state) {
-        CollectionState::INITIALIZED { total_supply, .. } => total_supply,
-        _ => abort ECollectionNotInitialized,
-    }
+    self.total_supply
 }
+
+//=== Assert Functions ===
 
 public fun assert_blob_reserved(self: &Collection, blob_id: u256) {
     assert!(self.blobs.borrow(blob_id).is_some(), EBlobNotReserved);
-}
-
-public fun assert_state_blob_reservation(self: &Collection) {
-    match (self.state) {
-        CollectionState::BLOB_RESERVATION { .. } => (),
-        _ => abort ENotBlobReservationState,
-    };
 }
 
 public fun assert_state_item_registration(self: &Collection) {
@@ -446,7 +406,7 @@ public fun assert_state_item_registration(self: &Collection) {
 
 public fun assert_state_initialized(self: &Collection) {
     match (self.state) {
-        CollectionState::INITIALIZED { .. } => (),
+        CollectionState::INITIALIZED => (),
         _ => abort ENotInitializedState,
     };
 }
