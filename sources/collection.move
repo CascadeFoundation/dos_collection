@@ -104,15 +104,13 @@ public struct CollectionBlobSlotUnreservedEvent has copy, drop {
 const EInvalidCollectionAdminCap: u64 = 10001;
 const ECollectionAlreadyInitialized: u64 = 10002;
 const ECollectionNotInitialized: u64 = 10003;
-const EBlobNotReserved: u64 = 10005;
-const ETargetSupplyReached: u64 = 20001;
-const ENotBlobReservationState: u64 = 20002;
-const ENotItemRegistrationState: u64 = 20003;
-const ENotInitializedState: u64 = 30000;
-const EBlobReservationTargetSupplyNotReached: u64 = 20004;
-const EItemRegistrationTargetSupplyNotReached: u64 = 20004;
-const EInvalidItemType: u64 = 30001;
-const EInvalidPublisher: u64 = 30002;
+const ENotItemRegistrationState: u64 = 20001;
+const EItemRegistrationTargetSupplyNotReached: u64 = 20002;
+const ENotInitializedState: u64 = 30001;
+const EInvalidItemType: u64 = 30002;
+const EInvalidPublisher: u64 = 30003;
+const EBlobNotReserved: u64 = 40001;
+const EBlobNotStored: u64 = 40002;
 
 //=== Init Function ===
 
@@ -394,7 +392,11 @@ public fun total_supply(self: &Collection): u64 {
 //=== Assert Functions ===
 
 public fun assert_blob_reserved(self: &Collection, blob_id: u256) {
-    assert!(self.blobs.borrow(blob_id).is_some(), EBlobNotReserved);
+    assert!(self.blobs.contains(blob_id), EBlobNotReserved);
+}
+
+public fun assert_blob_stored(self: &Collection, blob_id: u256) {
+    assert!(self.blobs.borrow(blob_id).is_some(), EBlobNotStored);
 }
 
 public fun assert_state_item_registration(self: &Collection) {
