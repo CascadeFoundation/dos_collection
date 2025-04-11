@@ -229,15 +229,18 @@ public fun unregister_item(self: &mut Collection, cap: &CollectionAdminCap, numb
     };
 }
 
-// Receive a Blob that's been sent to the Collection, and store it.
-public fun receive_and_store_blob(
-    self: &mut Collection,
-    cap: &CollectionAdminCap,
-    blob_to_receive: Receiving<Blob>,
-) {
-    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+// Receive a blob that's been sent to the Collection, and store it.
+public fun receive_and_store_blob(self: &mut Collection, blob_to_receive: Receiving<Blob>) {
     let blob = transfer::public_receive(&mut self.id, blob_to_receive);
     internal_store_blob(self, blob);
+}
+
+// Receive and store blobs that have been sent to the Collection, and store them.
+public fun receive_and_store_blobs(
+    self: &mut Collection,
+    blobs_to_receive: vector<Receiving<Blob>>,
+) {
+    blobs_to_receive.destroy!(|blob_to_receive| receive_and_store_blob(self, blob_to_receive));
 }
 
 // Renew a Blob with a WAL coin. Does not require CollectionAdminCap to allow for
