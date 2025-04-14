@@ -1,6 +1,5 @@
 module dos_collection::collection;
 
-use cascade_protocol::mint_cap::MintCap;
 use std::string::String;
 use std::type_name::{Self, TypeName};
 use sui::coin::Coin;
@@ -133,7 +132,6 @@ fun init(otw: COLLECTION, ctx: &mut TxContext) {
 
 // Create a new collection.
 public fun new<T: key + store>(
-    cap: MintCap<Collection>,
     publisher: &Publisher,
     creator: address,
     name: String,
@@ -173,8 +171,6 @@ public fun new<T: key + store>(
         collection_admin_cap_id: object::id(&collection_admin_cap),
         item_type: item_type,
     });
-
-    cap.destroy();
 
     (collection, collection_admin_cap)
 }

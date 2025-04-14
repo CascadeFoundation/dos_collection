@@ -2,11 +2,10 @@
 
 [move]
 version = 3
-manifest_digest = "ACA4CEC0173BD45B6A99B99A24F5488F4FBF01502B259C94827932FF4A2B9F30"
-deps_digest = "CAFAD8A7CF51067FB4358215BECB86BD100DD64E57C2AC8A7AE7D74B688F5965"
+manifest_digest = "66008B7471B9821787CA87F4CF569877512A01BA03711E9F9AC4002ABE56B31E"
+deps_digest = "52B406A7A21811BEF51751CF88DA0E76DAEFFEAC888D4F4060B1A72BBE7D8D35"
 dependencies = [
   { id = "Bridge", name = "Bridge" },
-  { id = "CascadeProtocol", name = "CascadeProtocol" },
   { id = "DeepBook", name = "DeepBook" },
   { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
@@ -19,18 +18,6 @@ id = "Bridge"
 source = { git = "https://github.com/MystenLabs/sui.git", rev = "04f11afaf5e0", subdir = "crates/sui-framework/packages/bridge" }
 
 dependencies = [
-  { id = "MoveStdlib", name = "MoveStdlib" },
-  { id = "Sui", name = "Sui" },
-  { id = "SuiSystem", name = "SuiSystem" },
-]
-
-[[move.package]]
-id = "CascadeProtocol"
-source = { git = "https://github.com/cascadefoundation/cascade_protocol.git", rev = "testnet", subdir = "package" }
-
-dependencies = [
-  { id = "Bridge", name = "Bridge" },
-  { id = "DeepBook", name = "DeepBook" },
   { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
   { id = "SuiSystem", name = "SuiSystem" },
@@ -92,6 +79,6 @@ flavor = "sui"
 
 [env.testnet]
 chain-id = "4c78adac"
-original-published-id = "0xd18e0763cf5380c2fa04a8d8195dd5ce8a6ce7ce18f05e21c05ef4ad134d8ea8"
-latest-published-id = "0xd18e0763cf5380c2fa04a8d8195dd5ce8a6ce7ce18f05e21c05ef4ad134d8ea8"
+original-published-id = "0xfbd9bf31ff511801398215dd733caec495c07269353ddcf68073ce2784e4e90c"
+latest-published-id = "0xfbd9bf31ff511801398215dd733caec495c07269353ddcf68073ce2784e4e90c"
 published-version = "1"
