@@ -10,6 +10,7 @@ use sui::table::{Self, Table};
 use sui::transfer::Receiving;
 use wal::wal::WAL;
 use walrus::blob::Blob;
+use walrus::storage_resource::Storage;
 use walrus::system::System;
 
 //=== Aliases ===
@@ -48,10 +49,17 @@ public enum CollectionState has copy, drop, store {
 
 //=== Events ===
 
-public struct CollectionBlobRenewedEvent has copy, drop {
+public struct CollectionBlobExtendedWithWalEvent has copy, drop {
     collection_id: ID,
     blob_id: u256,
     extension_epochs: u32,
+}
+
+public struct CollectionBlobExtendedWithStorageEvent has copy, drop {
+    collection_id: ID,
+    blob_id: u256,
+    start_epoch: u32,
+    end_epoch: u32,
 }
 
 public struct CollectionCreatedEvent has copy, drop {
@@ -241,7 +249,7 @@ public fun receive_and_store_blobs(
 
 // Renew a Blob with a WAL coin. Does not require CollectionAdminCap to allow for
 // anyone to renew a Blob associated with the Collection.
-public fun renew_blob(
+public fun extend_blob_with_wal(
     self: &mut Collection,
     blob_id: u256,
     extension_epochs: u32,
@@ -252,11 +260,31 @@ public fun renew_blob(
 
     system.extend_blob(blob_mut, extension_epochs, payment_coin);
 
-    emit(CollectionBlobRenewedEvent {
+    emit(CollectionBlobExtendedWithWalEvent {
         collection_id: self.id.to_inner(),
         blob_id: blob_id,
         extension_epochs: extension_epochs,
     });
+}
+
+// Renew a Blob with a Storage resource. Does not require CollectionAdminCap to allow for
+// anyone to renew a Blob associated with the Collection.
+public fun extend_blob_with_storage(
+    self: &mut Collection,
+    blob_id: u256,
+    storage: Storage,
+    system: &mut System,
+) {
+    let blob_mut = self.blobs.borrow_mut(blob_id).borrow_mut();
+
+    emit(CollectionBlobExtendedWithStorageEvent {
+        collection_id: self.id.to_inner(),
+        blob_id: blob_id,
+        start_epoch: storage.start_epoch(),
+        end_epoch: storage.end_epoch(),
+    });
+
+    system.extend_blob_with_resource(blob_mut, storage);
 }
 
 // Store a Blob in the Collection, requires a slot to be reserved first.
