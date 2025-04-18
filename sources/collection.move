@@ -8,6 +8,8 @@ use sui::event::emit;
 use sui::package::{Self, Publisher};
 use sui::table::{Self, Table};
 use sui::transfer::Receiving;
+use sui::transfer_policy::TransferPolicy;
+use sui::vec_set::{Self, VecSet};
 use wal::wal::WAL;
 use walrus::blob::Blob;
 use walrus::storage_resource::Storage;
@@ -34,6 +36,7 @@ public struct Collection has key, store {
     total_supply: u64,
     items: Table<u64, ID>,
     blobs: Table<u256, Option<Blob>>,
+    transfer_policies: VecSet<ID>,
 }
 
 public struct CollectionAdminCap has key, store {
@@ -118,7 +121,7 @@ const EInvalidItemType: u64 = 30002;
 const EInvalidPublisher: u64 = 30003;
 const EBlobNotReserved: u64 = 40001;
 const EBlobNotStored: u64 = 40002;
-
+const EInvalidTransferPolicyType: u64 = 50001;
 //=== Init Function ===
 
 fun init(otw: COLLECTION, ctx: &mut TxContext) {
@@ -165,6 +168,7 @@ public fun new<T: key + store>(
         total_supply: total_supply,
         items: table::new(ctx),
         blobs: table::new(ctx),
+        transfer_policies: vec_set::empty(),
     };
 
     let collection_admin_cap = CollectionAdminCap {
@@ -231,6 +235,23 @@ public fun unregister_item(self: &mut Collection, cap: &CollectionAdminCap, numb
         },
         _ => abort ECollectionAlreadyInitialized,
     };
+}
+
+// Link a TransferPolicy to the Collection for discoverability.
+public fun link_transfer_policy<T>(
+    self: &mut Collection,
+    cap: &CollectionAdminCap,
+    policy: &TransferPolicy<T>,
+) {
+    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    assert!(type_name::get<T>() == self.item_type, EInvalidTransferPolicyType);
+    self.transfer_policies.insert(object::id(policy));
+}
+
+// Unlink a TransferPolicy from the Collection.
+public fun unlink_transfer_policy(self: &mut Collection, cap: &CollectionAdminCap, policy_id: ID) {
+    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    self.transfer_policies.remove(&policy_id);
 }
 
 // Receive a blob that's been sent to the Collection, and store it.
