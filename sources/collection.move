@@ -109,6 +109,10 @@ public struct CollectionBlobSlotUnreservedEvent has copy, drop {
     blob_id: u256,
 }
 
+//=== Constants ===
+
+const DISPLAY_IMAGE_URL: vector<u8> = b"https://testnet.wal.gg/{image_uri}";
+
 //=== Errors ===
 
 const EInvalidCollectionAdminCap: u64 = 10001;
@@ -122,6 +126,7 @@ const EInvalidPublisher: u64 = 30003;
 const EBlobNotReserved: u64 = 40001;
 const EBlobNotStored: u64 = 40002;
 const EInvalidTransferPolicyType: u64 = 50001;
+
 //=== Init Function ===
 
 fun init(otw: COLLECTION, ctx: &mut TxContext) {
@@ -133,7 +138,8 @@ fun init(otw: COLLECTION, ctx: &mut TxContext) {
     display.add(b"name".to_string(), b"{name}".to_string());
     display.add(b"description".to_string(), b"{description}".to_string());
     display.add(b"external_url".to_string(), b"{external_url}".to_string());
-    display.add(b"image_uri".to_string(), b"{image_uri}".to_string());
+    display.add(b"image_uri".to_string(), b"walrus://{image_uri}".to_string());
+    display.add(b"image_url".to_string(), DISPLAY_IMAGE_URL.to_string());
 
     transfer::public_transfer(display, ctx.sender());
     transfer::public_transfer(publisher, ctx.sender());
