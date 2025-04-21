@@ -2,18 +2,13 @@ module dos_collection::collection;
 
 use std::string::String;
 use std::type_name::{Self, TypeName};
-use sui::coin::Coin;
 use sui::display;
 use sui::event::emit;
 use sui::package::{Self, Publisher};
 use sui::table::{Self, Table};
-use sui::transfer::Receiving;
 use sui::transfer_policy::TransferPolicy;
 use sui::vec_set::{Self, VecSet};
-use wal::wal::WAL;
 use walrus::blob::Blob;
-use walrus::storage_resource::Storage;
-use walrus::system::System;
 
 //=== Aliases ===
 
@@ -35,7 +30,8 @@ public struct Collection has key, store {
     image_uri: String,
     total_supply: u64,
     items: Table<u64, ID>,
-    blobs: Table<u256, Option<Blob>>,
+    // Stores relationships between Blob IDs and Blob Object IDs.
+    blobs: Table<u256, Option<ID>>,
     transfer_policies: VecSet<ID>,
 }
 
@@ -51,19 +47,6 @@ public enum CollectionState has copy, drop, store {
 }
 
 //=== Events ===
-
-public struct CollectionBlobExtendedWithWalEvent has copy, drop {
-    collection_id: ID,
-    blob_id: u256,
-    extension_epochs: u32,
-}
-
-public struct CollectionBlobExtendedWithStorageEvent has copy, drop {
-    collection_id: ID,
-    blob_id: u256,
-    start_epoch: u32,
-    end_epoch: u32,
-}
 
 public struct CollectionCreatedEvent has copy, drop {
     creator: address,
@@ -84,14 +67,10 @@ public struct CollectionItemUnregisteredEvent has copy, drop {
     item_number: u64,
 }
 
-public struct CollectionBlobStoredEvent has copy, drop {
+public struct CollectionBlobLinkedEvent has copy, drop {
     collection_id: ID,
     blob_id: u256,
-}
-
-public struct CollectionBlobSwappedEvent has copy, drop {
-    collection_id: ID,
-    blob_id: u256,
+    blob_object_id: ID,
 }
 
 public struct CollectionBlobSlotReservedEvent has copy, drop {
@@ -260,78 +239,7 @@ public fun unlink_transfer_policy(self: &mut Collection, cap: &CollectionAdminCa
     self.transfer_policies.remove(&policy_id);
 }
 
-// Receive a blob that's been sent to the Collection, and store it.
-public fun receive_and_store_blob(self: &mut Collection, blob_to_receive: Receiving<Blob>) {
-    let blob = transfer::public_receive(&mut self.id, blob_to_receive);
-    internal_store_blob(self, blob);
-}
-
-// Receive and store blobs that have been sent to the Collection, and store them.
-public fun receive_and_store_blobs(
-    self: &mut Collection,
-    blobs_to_receive: vector<Receiving<Blob>>,
-) {
-    blobs_to_receive.destroy!(|blob_to_receive| receive_and_store_blob(self, blob_to_receive));
-}
-
-// Renew a Blob with a WAL coin. Does not require CollectionAdminCap to allow for
-// anyone to renew a Blob associated with the Collection.
-public fun extend_blob_with_wal(
-    self: &mut Collection,
-    blob_id: u256,
-    extension_epochs: u32,
-    payment_coin: &mut Coin<WAL>,
-    system: &mut System,
-) {
-    let blob_mut = self.blobs.borrow_mut(blob_id).borrow_mut();
-
-    system.extend_blob(blob_mut, extension_epochs, payment_coin);
-
-    emit(CollectionBlobExtendedWithWalEvent {
-        collection_id: self.id.to_inner(),
-        blob_id: blob_id,
-        extension_epochs: extension_epochs,
-    });
-}
-
-// Renew a Blob with a Storage resource. Does not require CollectionAdminCap to allow for
-// anyone to renew a Blob associated with the Collection.
-public fun extend_blob_with_storage(
-    self: &mut Collection,
-    blob_id: u256,
-    storage: Storage,
-    system: &mut System,
-) {
-    let blob_mut = self.blobs.borrow_mut(blob_id).borrow_mut();
-
-    emit(CollectionBlobExtendedWithStorageEvent {
-        collection_id: self.id.to_inner(),
-        blob_id: blob_id,
-        start_epoch: storage.start_epoch(),
-        end_epoch: storage.end_epoch(),
-    });
-
-    system.extend_blob_with_resource(blob_mut, storage);
-}
-
-// Store a Blob in the Collection, requires a slot to be reserved first.
-// Does not require a CollectionAdminCap because only blobs with the correct digest can be stored.
-public fun store_blob(self: &mut Collection, blob: Blob) {
-    internal_store_blob(self, blob);
-}
-
-// Swap a Blob with a new Blob, and burn the old one.
-public fun swap_blob(self: &mut Collection, blob: Blob) {
-    emit(CollectionBlobSwappedEvent {
-        collection_id: self.id.to_inner(),
-        blob_id: blob.blob_id(),
-    });
-    self.blobs.borrow_mut(blob.blob_id()).swap(blob).burn();
-}
-
 // Reserve a storage slot for a Blob by storing the expected Blob ID mapped to option::none().
-//
-// Required State: BLOB_RESERVATION
 #[allow(unused_assignment)]
 public fun reserve_blob_slot(self: &mut Collection, cap: &CollectionAdminCap, blob_id: u256) {
     assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
@@ -357,9 +265,22 @@ public fun reserve_blob_slots(
 // Required State: BLOB_RESERVATION
 public fun unreserve_blob_slot(self: &mut Collection, blob_id: u256) {
     self.blobs.remove(blob_id).destroy_none();
+
     emit(CollectionBlobSlotUnreservedEvent {
         collection_id: self.id.to_inner(),
         blob_id: blob_id,
+    });
+}
+
+// Link a Blob ID to the ID of the corresponding Blob object for discoverability.
+public fun link_blob_object_id(self: &mut Collection, cap: &CollectionAdminCap, blob: &Blob) {
+    assert!(cap.collection_id == self.id.to_inner(), EInvalidCollectionAdminCap);
+    self.blobs.borrow_mut(blob.blob_id()).swap_or_fill(object::id(blob));
+
+    emit(CollectionBlobLinkedEvent {
+        collection_id: self.id.to_inner(),
+        blob_id: blob.blob_id(),
+        blob_object_id: object::id(blob),
     });
 }
 
@@ -396,14 +317,6 @@ fun internal_reserve_blob_slot(self: &mut Collection, blob_id: u256) {
         collection_id: self.id.to_inner(),
         blob_id: blob_id,
     });
-}
-
-fun internal_store_blob(self: &mut Collection, blob: Blob) {
-    emit(CollectionBlobStoredEvent {
-        collection_id: self.id.to_inner(),
-        blob_id: blob.blob_id(),
-    });
-    self.blobs.borrow_mut(blob.blob_id()).fill(blob);
 }
 
 //=== View Functions ===
