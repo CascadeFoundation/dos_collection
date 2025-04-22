@@ -155,7 +155,11 @@ public fun register_item<T: key + store>(
             self.items.add(number, object::id(item));
             // Set current supply to the new quantity of registered items.
             *registered_count = self.items.length();
-
+            // Transition to INITIALIZED state if the target supply has been reached.
+            if (registered_count == target_supply) {
+                self.state = CollectionState::INITIALIZED { supply: *target_supply };
+            };
+            // Emit CollectionItemRegisteredEvent.
             emit(CollectionManagerItemRegisteredEvent {
                 collection_manager_id: self.id.to_inner(),
                 item_id: object::id(item),
