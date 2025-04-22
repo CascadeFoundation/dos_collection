@@ -33,19 +33,6 @@ public struct CollectionMetadataCreatedEvent has copy, drop {
 
 const DISPLAY_IMAGE_URL: vector<u8> = b"https://testnet.wal.gg/{image_uri}";
 
-//=== Errors ===
-
-const EInvalidCollectionAdminCap: u64 = 10001;
-const ECollectionAlreadyInitialized: u64 = 10002;
-const ECollectionNotInitialized: u64 = 10003;
-const ENotItemRegistrationState: u64 = 20001;
-const EItemRegistrationTargetSupplyNotReached: u64 = 20002;
-const ENotInitializedState: u64 = 30001;
-const EInvalidItemType: u64 = 30002;
-const EInvalidPublisher: u64 = 30003;
-const EBlobNotReserved: u64 = 40001;
-const EInvalidTransferPolicyType: u64 = 50001;
-
 //=== Init Function ===
 
 fun init(otw: COLLECTION_METADATA, ctx: &mut TxContext) {

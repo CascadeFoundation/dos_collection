@@ -11,10 +11,10 @@ use sui::table::{Self, Table};
 use sui::transfer::Receiving;
 use sui::transfer_policy::TransferPolicy;
 use sui::vec_set::{Self, VecSet};
+use wal::wal::WAL;
 use walrus::blob::Blob;
 use walrus::storage_resource::Storage;
 use walrus::system::System;
-use walrus::wal::WAL;
 
 //=== Aliases ===
 
