@@ -21,6 +21,7 @@ use walrus::system::System;
 public use fun collection_manager_admin_cap_collection_manager_id as
     CollectionManagerAdminCap.collection_manager_id;
 public use fun collection_manager_admin_cap_destroy as CollectionManagerAdminCap.destroy;
+
 //=== Structs ===
 
 public struct COLLECTION_MANAGER has drop {}
@@ -269,8 +270,8 @@ public fun store_blob(self: &mut CollectionManager, blob: Blob) {
 public fun remove_blob(self: &mut CollectionManager, blob_id: u256, system: &System): Blob {
     // Remove the Blob from the CollectionManager.
     let old_blob = self.blobs.borrow_mut(blob_id).extract();
-    // Assert that the Blob has expired by comparing the current epoch to the Blob's end epoch.
-    assert!(system.epoch() > old_blob.end_epoch(), EBlobNotExpired);
+    // Assert that the Blob is in or after its expiration epoch by comparing the current epoch to the Blob's end epoch.
+    assert!(system.epoch() >= old_blob.end_epoch(), EBlobNotExpired);
     // Return the old Blob.
     old_blob
 }
