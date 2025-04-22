@@ -45,8 +45,8 @@ public struct CollectionManagerAdminCap has key, store {
 //=== Enums ===
 
 public enum CollectionState has copy, drop, store {
-    ITEM_REGISTRATION { registered_count: u64, target_supply: u64 },
-    INITIALIZED { supply: u64 },
+    ITEM_REGISTRATION { target_supply: u64 },
+    INITIALIZED,
 }
 
 //=== Events ===
@@ -114,7 +114,6 @@ public(package) fun new<T: key>(
         item_type: type_name::get<T>(),
         image_uri: image_uri,
         state: CollectionState::ITEM_REGISTRATION {
-            registered_count: 0,
             target_supply: target_supply,
         },
         items: table::new(ctx),
@@ -147,18 +146,12 @@ public fun register_item<T: key + store>(
     assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
     assert!(cap.item_type == type_name::get<T>(), EInvalidItemType);
 
-    match (&mut self.state) {
-        CollectionState::ITEM_REGISTRATION { registered_count, target_supply } => {
+    match (self.state) {
+        CollectionState::ITEM_REGISTRATION { target_supply } => {
             // Assert that the quantity of registered items is less than the target supply.
-            assert!(self.items.length() < *target_supply, ECollectionAlreadyInitialized);
+            assert!(self.items.length() < target_supply, ECollectionAlreadyInitialized);
             // Register the item to the collection.
             self.items.add(number, object::id(item));
-            // Set current supply to the new quantity of registered items.
-            *registered_count = self.items.length();
-            // Transition to INITIALIZED state if the target supply has been reached.
-            if (registered_count == target_supply) {
-                self.state = CollectionState::INITIALIZED { supply: *target_supply };
-            };
             // Emit CollectionItemRegisteredEvent.
             emit(CollectionManagerItemRegisteredEvent {
                 collection_manager_id: self.id.to_inner(),
@@ -177,14 +170,12 @@ public fun unregister_item(
 ) {
     assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
 
-    match (&mut self.state) {
-        CollectionState::ITEM_REGISTRATION { registered_count, target_supply } => {
+    match (self.state) {
+        CollectionState::ITEM_REGISTRATION { target_supply } => {
             // Assert that the quantity of registered items is less than the target supply.
-            assert!(self.items.length() < *target_supply, ECollectionAlreadyInitialized);
+            assert!(self.items.length() < target_supply, ECollectionAlreadyInitialized);
             // Register the item to the collection.
             let item_id = self.items.remove(number);
-            // Set current supply to the new quantity of registered items.
-            *registered_count = self.items.length();
             // Emit CollectionItemUnregisteredEvent.
             emit(CollectionManagerItemUnregisteredEvent {
                 collection_manager_id: self.id.to_inner(),
@@ -309,7 +300,7 @@ public fun collection_manager_admin_cap_destroy(
     self: &mut CollectionManager,
 ) {
     match (self.state) {
-        CollectionState::INITIALIZED { .. } => {
+        CollectionState::INITIALIZED => {
             let CollectionManagerAdminCap { id, .. } = cap;
             id.delete();
         },
@@ -322,9 +313,9 @@ public fun collection_manager_admin_cap_destroy(
 // Required State: ITEM_REGISTRATION
 public fun set_initialized_state(self: &mut CollectionManager) {
     match (self.state) {
-        CollectionState::ITEM_REGISTRATION { registered_count, target_supply } => {
-            assert!(registered_count == target_supply, EItemRegistrationTargetSupplyNotReached);
-            self.state = CollectionState::INITIALIZED { supply: target_supply };
+        CollectionState::ITEM_REGISTRATION { target_supply } => {
+            assert!(self.items.length() == target_supply, EItemRegistrationTargetSupplyNotReached);
+            self.state = CollectionState::INITIALIZED;
         },
         _ => abort ENotItemRegistrationState,
     };
@@ -346,33 +337,36 @@ fun internal_unreserve_blob_slot(self: &mut CollectionManager, blob_id: u256) {
 
 //=== View Functions ===
 
+public fun item_type(self: &CollectionManager): TypeName {
+    self.item_type
+}
+
+public fun image_uri(self: &CollectionManager): String {
+    self.image_uri
+}
+
+public fun items(self: &CollectionManager): &Table<u64, ID> {
+    &self.items
+}
+
+public fun blobs(self: &CollectionManager): &Table<u256, Option<Blob>> {
+    &self.blobs
+}
+
+public fun transfer_policies(self: &CollectionManager): &VecSet<ID> {
+    &self.transfer_policies
+}
+
 public fun collection_metadata_id(self: &CollectionManager): ID {
     *df::borrow<vector<u8>, ID>(&self.id, b"COLLECTION_METADATA_ID")
 }
 
-public fun registered_count(self: &CollectionManager): u64 {
-    match (self.state) {
-        CollectionState::ITEM_REGISTRATION { registered_count, .. } => registered_count,
-        _ => abort ECollectionNotInitialized,
-    }
-}
-
-public fun target_supply(self: &CollectionManager): u64 {
-    match (self.state) {
-        CollectionState::ITEM_REGISTRATION { target_supply, .. } => target_supply,
-        _ => abort ECollectionNotInitialized,
-    }
-}
-
-public fun supply(self: &CollectionManager): u64 {
-    match (self.state) {
-        CollectionState::INITIALIZED { supply, .. } => supply,
-        _ => abort ECollectionNotInitialized,
-    }
-}
-
 public fun collection_manager_admin_cap_collection_manager_id(cap: &CollectionManagerAdminCap): ID {
     cap.collection_manager_id
+}
+
+public(package) fun uid_mut(self: &mut CollectionManager): &mut UID {
+    &mut self.id
 }
 
 //=== Assert Functions ===
@@ -390,7 +384,7 @@ public fun assert_state_item_registration(self: &CollectionManager) {
 
 public fun assert_state_initialized(self: &CollectionManager) {
     match (self.state) {
-        CollectionState::INITIALIZED { .. } => (),
+        CollectionState::INITIALIZED => (),
         _ => abort ENotInitializedState,
     };
 }
@@ -401,8 +395,4 @@ public fun assert_valid_collection_manager_admin_cap(
     cap: &CollectionManagerAdminCap,
 ) {
     assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
-}
-
-public(package) fun uid_mut(self: &mut CollectionManager): &mut UID {
-    &mut self.id
 }
