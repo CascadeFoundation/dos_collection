@@ -85,7 +85,6 @@ const ENotInitializedState: u64 = 30001;
 const EInvalidItemType: u64 = 30002;
 const EBlobNotReserved: u64 = 40001;
 const EInvalidTransferPolicyType: u64 = 50001;
-const EInvalidBlobEpoch: u64 = 60001;
 const EBlobNotExpired: u64 = 60002;
 
 //=== Init Function ===
