@@ -3,8 +3,9 @@ module dos_collection::collection_metadata;
 use std::string::String;
 use std::type_name::{Self, TypeName};
 use sui::display;
+use sui::dynamic_field as df;
 use sui::event::emit;
-use sui::package::{Self, Publisher};
+use sui::package;
 
 //=== Structs ===
 
@@ -120,4 +121,8 @@ public fun item_type(self: &CollectionMetadata): TypeName {
 
 public fun name(self: &CollectionMetadata): String {
     self.name
+}
+
+public fun collection_manager_id(self: &CollectionMetadata): ID {
+    *df::borrow<vector<u8>, ID>(&self.id, b"COLLECTION_MANAGER_ID")
 }

@@ -9,6 +9,8 @@ use sui::package::Publisher;
 //=== Constants ===
 
 const EInvalidPublisher: u64 = 10000;
+const EInvalidCollectionManagerAdminCap: u64 = 10001;
+const EInvalidCollectionMetadata: u64 = 10002;
 
 //=== Public Functions ===
 
@@ -38,6 +40,7 @@ public fun new<T: key>(
 
     // Create the CollectionManager.
     let (mut collection_manager, collection_manager_admin_cap) = collection_manager::new<T>(
+        image_uri,
         target_supply,
         ctx,
     );
@@ -57,4 +60,16 @@ public fun new<T: key>(
     );
 
     (collection_metadata, collection_manager, collection_manager_admin_cap)
+}
+
+public fun assert_is_authorized(
+    metadata: &CollectionMetadata,
+    manager: &CollectionManager,
+    manager_admin_cap: &CollectionManagerAdminCap,
+) {
+    assert!(
+        manager_admin_cap.collection_manager_id() == object::id(manager),
+        EInvalidCollectionManagerAdminCap,
+    );
+    assert!(manager.collection_metadata_id() == object::id(metadata), EInvalidCollectionMetadata);
 }

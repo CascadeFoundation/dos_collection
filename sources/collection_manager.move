@@ -4,6 +4,7 @@ use std::string::String;
 use std::type_name::{Self, TypeName};
 use sui::coin::Coin;
 use sui::display;
+use sui::dynamic_field as df;
 use sui::event::emit;
 use sui::package;
 use sui::table::{Self, Table};
@@ -341,8 +342,8 @@ fun internal_unreserve_blob_slot(self: &mut CollectionManager, blob_id: u256) {
 
 //=== View Functions ===
 
-public fun collection_manager_admin_cap_collection_manager_id(cap: &CollectionManagerAdminCap): ID {
-    cap.collection_manager_id
+public fun collection_metadata_id(self: &CollectionManager): ID {
+    *df::borrow<vector<u8>, ID>(&self.id, b"COLLECTION_METADATA_ID")
 }
 
 public fun registered_count(self: &CollectionManager): u64 {
@@ -350,6 +351,24 @@ public fun registered_count(self: &CollectionManager): u64 {
         CollectionState::ITEM_REGISTRATION { registered_count, .. } => registered_count,
         _ => abort ECollectionNotInitialized,
     }
+}
+
+public fun target_supply(self: &CollectionManager): u64 {
+    match (self.state) {
+        CollectionState::ITEM_REGISTRATION { target_supply, .. } => target_supply,
+        _ => abort ECollectionNotInitialized,
+    }
+}
+
+public fun supply(self: &CollectionManager): u64 {
+    match (self.state) {
+        CollectionState::INITIALIZED { supply, .. } => supply,
+        _ => abort ECollectionNotInitialized,
+    }
+}
+
+public fun collection_manager_admin_cap_collection_manager_id(cap: &CollectionManagerAdminCap): ID {
+    cap.collection_manager_id
 }
 
 //=== Assert Functions ===
