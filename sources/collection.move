@@ -63,9 +63,9 @@ public fun new<T: key>(
 }
 
 public fun assert_is_authorized(
-    metadata: &CollectionMetadata,
-    manager: &CollectionManager,
     manager_admin_cap: &CollectionManagerAdminCap,
+    manager: &CollectionManager,
+    metadata: &CollectionMetadata,
 ) {
     assert!(
         manager_admin_cap.collection_manager_id() == object::id(manager),
