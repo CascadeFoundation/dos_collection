@@ -18,6 +18,7 @@ use walrus::system::System;
 
 //=== Aliases ===
 
+public use fun collection_manager_admin_cap_authorize as CollectionManagerAdminCap.authorize;
 public use fun collection_manager_admin_cap_collection_manager_id as
     CollectionManagerAdminCap.collection_manager_id;
 public use fun collection_manager_admin_cap_destroy as CollectionManagerAdminCap.destroy;
@@ -45,7 +46,7 @@ public struct CollectionManagerAdminCap has key, store {
 //=== Enums ===
 
 public enum CollectionState has copy, drop, store {
-    ITEM_REGISTRATION { target_supply: u64 },
+    INITIALIZATION { target_supply: u64 },
     INITIALIZED,
 }
 
@@ -77,16 +78,18 @@ public struct CollectionManagerBlobSlotReservedEvent has copy, drop {
 
 //=== Errors ===
 
-const EInvalidCollectionManagerAdminCap: u64 = 10001;
-const ECollectionAlreadyInitialized: u64 = 10002;
-const ECollectionNotInitialized: u64 = 10003;
-const ENotItemRegistrationState: u64 = 20001;
-const EItemRegistrationTargetSupplyNotReached: u64 = 20002;
-const ENotInitializedState: u64 = 30001;
-const EInvalidItemType: u64 = 30002;
-const EBlobNotReserved: u64 = 40001;
-const EInvalidTransferPolicyType: u64 = 50001;
-const EBlobNotExpired: u64 = 60002;
+const EInvalidCollectionManagerAdminCap: u64 = 10000;
+const EInvalidItemType: u64 = 10001;
+const EInvalidStateForAction: u64 = 20000;
+const ETargetSupplyNotReached: u64 = 20001;
+const ETargetSupplyReached: u64 = 20002;
+const ENotInitializedState: u64 = 30000;
+const ENotInitializationState: u64 = 30001;
+const EBlobNotReserved: u64 = 40000;
+const EBlobNotExpired: u64 = 40001;
+const EInvalidTransferPolicyType: u64 = 50000;
+const EInvalidTargetSupply: u64 = 60000;
+const ETargetSupplyReached: u64 = 60001;
 
 //=== Init Function ===
 
@@ -109,11 +112,16 @@ public(package) fun new<T: key>(
     target_supply: u64,
     ctx: &mut TxContext,
 ): (CollectionManager, CollectionManagerAdminCap) {
+    // Assert that the target supply is greater than 0.
+    assert!(target_supply > 0, EInvalidTargetSupply);
+
+    let item_type = type_name::get<T>();
+
     let collection_manager = CollectionManager {
         id: object::new(ctx),
-        item_type: type_name::get<T>(),
+        item_type: item_type,
         image_uri: image_uri,
-        state: CollectionState::ITEM_REGISTRATION {
+        state: CollectionState::INITIALIZATION {
             target_supply: target_supply,
         },
         items: table::new(ctx),
@@ -124,14 +132,14 @@ public(package) fun new<T: key>(
     let collection_manager_admin_cap = CollectionManagerAdminCap {
         id: object::new(ctx),
         collection_manager_id: object::id(&collection_manager),
-        item_type: type_name::get<T>(),
+        item_type: item_type,
     };
 
     emit(CollectionManagerCreatedEvent {
         creator: ctx.sender(),
         collection_manager_id: object::id(&collection_manager),
         collection_manager_admin_cap_id: object::id(&collection_manager_admin_cap),
-        item_type: type_name::get<T>(),
+        item_type: item_type,
     });
 
     (collection_manager, collection_manager_admin_cap)
@@ -143,13 +151,13 @@ public fun register_item<T: key + store>(
     number: u64,
     item: &T,
 ) {
-    assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
-    assert!(cap.item_type == type_name::get<T>(), EInvalidItemType);
+    cap.authorize(self);
+    assert_valid_item_type<T>(self);
 
     match (self.state) {
-        CollectionState::ITEM_REGISTRATION { target_supply } => {
+        CollectionState::INITIALIZATION { target_supply } => {
             // Assert that the quantity of registered items is less than the target supply.
-            assert!(self.items.length() < target_supply, ECollectionAlreadyInitialized);
+            assert!(self.items.length() < target_supply, ETargetSupplyReached);
             // Register the item to the collection.
             self.items.add(number, object::id(item));
             // Emit CollectionItemRegisteredEvent.
@@ -159,7 +167,7 @@ public fun register_item<T: key + store>(
                 item_number: number,
             });
         },
-        _ => abort ECollectionAlreadyInitialized,
+        _ => abort EInvalidStateForAction,
     };
 }
 
@@ -168,12 +176,10 @@ public fun unregister_item(
     cap: &CollectionManagerAdminCap,
     number: u64,
 ) {
-    assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
+    cap.authorize(self);
 
     match (self.state) {
-        CollectionState::ITEM_REGISTRATION { target_supply } => {
-            // Assert that the quantity of registered items is less than the target supply.
-            assert!(self.items.length() < target_supply, ECollectionAlreadyInitialized);
+        CollectionState::INITIALIZATION { target_supply } => {
             // Register the item to the collection.
             let item_id = self.items.remove(number);
             // Emit CollectionItemUnregisteredEvent.
@@ -183,7 +189,7 @@ public fun unregister_item(
                 item_number: number,
             });
         },
-        _ => abort ECollectionAlreadyInitialized,
+        _ => abort EInvalidStateForAction,
     };
 }
 
@@ -193,8 +199,8 @@ public fun link_transfer_policy<T>(
     cap: &CollectionManagerAdminCap,
     policy: &TransferPolicy<T>,
 ) {
-    assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
-    assert!(type_name::get<T>() == self.item_type, EInvalidTransferPolicyType);
+    cap.authorize(self);
+    assert_valid_item_type<T>(self);
     self.transfer_policies.insert(object::id(policy));
 }
 
@@ -204,7 +210,7 @@ public fun unlink_transfer_policy(
     cap: &CollectionManagerAdminCap,
     policy_id: ID,
 ) {
-    assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
+    cap.authorize(self);
     self.transfer_policies.remove(&policy_id);
 }
 
@@ -215,8 +221,13 @@ public fun reserve_blob_slot(
     cap: &CollectionManagerAdminCap,
     blob_id: u256,
 ) {
-    assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
-    self.internal_reserve_blob_slot(blob_id);
+    cap.authorize(self);
+    match (self.state) {
+        CollectionState::INITIALIZATION { .. } => {
+            self.internal_reserve_blob_slot(blob_id);
+        },
+        _ => abort EInvalidStateForAction,
+    }
 }
 
 // Reserve multiple Blob slots by storing the expected Blob IDs mapped to option::none().
@@ -226,8 +237,14 @@ public fun reserve_blob_slots(
     cap: &CollectionManagerAdminCap,
     blob_ids: vector<u256>,
 ) {
-    assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
-    blob_ids.destroy!(|blob_id| self.internal_reserve_blob_slot(blob_id));
+    cap.authorize(self);
+
+    match (self.state) {
+        CollectionState::INITIALIZATION { .. } => {
+            blob_ids.destroy!(|blob_id| self.internal_reserve_blob_slot(blob_id));
+        },
+        _ => abort EInvalidStateForAction,
+    }
 }
 
 // Unreserve a Blob slot by removing the Blob ID from the blobs table. Aborts if a Referent<Blob> is already stored.
@@ -236,8 +253,14 @@ public fun unreserve_blob_slot(
     cap: &CollectionManagerAdminCap,
     blob_id: u256,
 ) {
-    assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
-    self.internal_unreserve_blob_slot(blob_id);
+    cap.authorize(self);
+
+    match (self.state) {
+        CollectionState::INITIALIZATION { .. } => {
+            self.internal_unreserve_blob_slot(blob_id);
+        },
+        _ => abort EInvalidStateForAction,
+    }
 }
 
 // Unreserve multiple Blob slots by removing the Blob IDs from the blobs table.
@@ -246,18 +269,28 @@ public fun unreserve_blob_slots(
     cap: &CollectionManagerAdminCap,
     blob_ids: vector<u256>,
 ) {
-    assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
-    blob_ids.destroy!(|blob_id| self.internal_unreserve_blob_slot(blob_id));
+    cap.authorize(self);
+
+    match (self.state) {
+        CollectionState::INITIALIZATION { .. } => {
+            blob_ids.destroy!(|blob_id| self.internal_unreserve_blob_slot(blob_id));
+        },
+        _ => abort EInvalidStateForAction,
+    }
 }
 
+// Receive and store a Blob in the CollectionManager.
 public fun receive_and_store_blob(self: &mut CollectionManager, blob_to_receive: Receiving<Blob>) {
     let blob = transfer::public_receive(&mut self.id, blob_to_receive);
-    self.blobs.borrow_mut(blob.blob_id()).fill(blob);
+    let blob_id = blob.blob_id();
+    assert!(self.blobs.contains(blob_id), EBlobNotReserved);
+    self.blobs.borrow_mut(blob_id).fill(blob);
 }
 
 // Store a Blob in the CollectionManager.
 public fun store_blob(self: &mut CollectionManager, blob: Blob) {
     let blob_id = blob.blob_id();
+    assert!(self.blobs.contains(blob_id), EBlobNotReserved);
     self.blobs.borrow_mut(blob_id).fill(blob);
 }
 
@@ -304,20 +337,22 @@ public fun collection_manager_admin_cap_destroy(
             let CollectionManagerAdminCap { id, .. } = cap;
             id.delete();
         },
-        _ => abort ECollectionNotInitialized,
+        _ => abort ENotInitializedState,
     };
 }
 
-// Transition from ITEM_REGISTRATION to INITIALIZED state once target supply is reached.
+// Transition from INITIALIZATION to INITIALIZED state once target supply is reached.
 //
-// Required State: ITEM_REGISTRATION
-public fun set_initialized_state(self: &mut CollectionManager) {
+// Required State: INITIALIZATION
+public fun set_initialized_state(self: &mut CollectionManager, cap: &CollectionManagerAdminCap) {
+    cap.authorize(self);
+
     match (self.state) {
-        CollectionState::ITEM_REGISTRATION { target_supply } => {
-            assert!(self.items.length() == target_supply, EItemRegistrationTargetSupplyNotReached);
+        CollectionState::INITIALIZATION { target_supply } => {
+            assert!(self.items.length() == target_supply, ETargetSupplyNotReached);
             self.state = CollectionState::INITIALIZED;
         },
-        _ => abort ENotItemRegistrationState,
+        _ => abort EInvalidStateForAction,
     };
 }
 
@@ -337,28 +372,28 @@ fun internal_unreserve_blob_slot(self: &mut CollectionManager, blob_id: u256) {
 
 //=== View Functions ===
 
-public fun item_type(self: &CollectionManager): TypeName {
-    self.item_type
+public fun blobs(self: &CollectionManager): &Table<u256, Option<Blob>> {
+    &self.blobs
+}
+
+public fun collection_metadata_id(self: &CollectionManager): ID {
+    *df::borrow<vector<u8>, ID>(&self.id, b"COLLECTION_METADATA_ID")
 }
 
 public fun image_uri(self: &CollectionManager): String {
     self.image_uri
 }
 
+public fun item_type(self: &CollectionManager): TypeName {
+    self.item_type
+}
+
 public fun items(self: &CollectionManager): &Table<u64, ID> {
     &self.items
 }
 
-public fun blobs(self: &CollectionManager): &Table<u256, Option<Blob>> {
-    &self.blobs
-}
-
 public fun transfer_policies(self: &CollectionManager): &VecSet<ID> {
     &self.transfer_policies
-}
-
-public fun collection_metadata_id(self: &CollectionManager): ID {
-    *df::borrow<vector<u8>, ID>(&self.id, b"COLLECTION_METADATA_ID")
 }
 
 public fun collection_manager_admin_cap_collection_manager_id(cap: &CollectionManagerAdminCap): ID {
@@ -375,10 +410,10 @@ public fun assert_blob_reserved(self: &CollectionManager, blob_id: u256) {
     assert!(self.blobs.contains(blob_id), EBlobNotReserved);
 }
 
-public fun assert_state_item_registration(self: &CollectionManager) {
+public fun assert_state_initialization(self: &CollectionManager) {
     match (self.state) {
-        CollectionState::ITEM_REGISTRATION { .. } => (),
-        _ => abort ENotItemRegistrationState,
+        CollectionState::INITIALIZATION { .. } => (),
+        _ => abort ENotInitializationState,
     };
 }
 
@@ -389,10 +424,15 @@ public fun assert_state_initialized(self: &CollectionManager) {
     };
 }
 
-// Assert that a CollectionManagerAdminCap is valid for the Collection.
-public fun assert_valid_collection_manager_admin_cap(
+fun assert_valid_item_type<T>(self: &CollectionManager) {
+    assert!(type_name::get<T>() == self.item_type, EInvalidItemType);
+}
+
+//=== Private Functions ===
+
+fun collection_manager_admin_cap_authorize(
     self: &CollectionManager,
     cap: &CollectionManagerAdminCap,
 ) {
-    assert!(cap.collection_manager_id == self.id.to_inner(), EInvalidCollectionManagerAdminCap);
+    cap.authorize(self);
 }
