@@ -177,7 +177,7 @@ public fun unregister_item(
     cap.authorize(self);
 
     match (self.state) {
-        CollectionState::INITIALIZATION { target_supply } => {
+        CollectionState::INITIALIZATION { .. } => {
             // Register the item to the collection.
             let item_id = self.items.remove(number);
             // Emit CollectionItemUnregisteredEvent.
