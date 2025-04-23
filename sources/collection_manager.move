@@ -79,17 +79,15 @@ public struct CollectionManagerBlobSlotReservedEvent has copy, drop {
 //=== Errors ===
 
 const EInvalidCollectionManagerAdminCap: u64 = 10000;
-const EInvalidItemType: u64 = 10001;
-const EInvalidStateForAction: u64 = 20000;
+const EInvalidTargetSupply: u64 = 20000;
 const ETargetSupplyNotReached: u64 = 20001;
 const ETargetSupplyReached: u64 = 20002;
-const ENotInitializedState: u64 = 30000;
-const ENotInitializationState: u64 = 30001;
+const EInvalidStateForAction: u64 = 30000;
+const ENotInitializedState: u64 = 30001;
+const ENotInitializationState: u64 = 30002;
 const EBlobNotReserved: u64 = 40000;
 const EBlobNotExpired: u64 = 40001;
-const EInvalidTransferPolicyType: u64 = 50000;
-const EInvalidTargetSupply: u64 = 60000;
-const ETargetSupplyReached: u64 = 60001;
+const EInvalidItemType: u64 = 50000;
 
 //=== Init Function ===
 
@@ -431,8 +429,11 @@ fun assert_valid_item_type<T>(self: &CollectionManager) {
 //=== Private Functions ===
 
 fun collection_manager_admin_cap_authorize(
-    self: &CollectionManager,
     cap: &CollectionManagerAdminCap,
+    collection_manager: &CollectionManager,
 ) {
-    cap.authorize(self);
+    assert!(
+        cap.collection_manager_id() == object::id(collection_manager),
+        EInvalidCollectionManagerAdminCap,
+    );
 }

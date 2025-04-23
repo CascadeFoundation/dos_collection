@@ -86,6 +86,12 @@ public(package) fun uid_mut(self: &mut CollectionMetadata): &mut UID {
     &mut self.id
 }
 
+//=== View Functions ===
+
+public fun collection_manager_id(self: &CollectionMetadata): ID {
+    *df::borrow<vector<u8>, ID>(&self.id, b"COLLECTION_MANAGER_ID")
+}
+
 public fun creator(self: &CollectionMetadata): address {
     self.creator
 }
@@ -108,8 +114,4 @@ public fun item_type(self: &CollectionMetadata): TypeName {
 
 public fun name(self: &CollectionMetadata): String {
     self.name
-}
-
-public fun collection_manager_id(self: &CollectionMetadata): ID {
-    *df::borrow<vector<u8>, ID>(&self.id, b"COLLECTION_MANAGER_ID")
 }
