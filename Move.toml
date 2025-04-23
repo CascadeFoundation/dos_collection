@@ -5,7 +5,7 @@ license = "Cascade DOL 1.0"
 authors = ["Cascade Foundation (dos@cascade.foundation)"]
 
 [dependencies]
-Walrus = { git = "https://github.com/MystenLabs/walrus.git", subdir = "testnet-contracts/walrus", rev = "main"}
+Walrus = { git = "https://github.com/MystenLabs/walrus.git", subdir = "mainnet-contracts/walrus", rev = "main"}
 
 [addresses]
 dos_collection = "0x0"

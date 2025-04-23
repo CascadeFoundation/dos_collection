@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "66008B7471B9821787CA87F4CF569877512A01BA03711E9F9AC4002ABE56B31E"
+manifest_digest = "F355D490EF580BAA407E75493331C547B9B7DBEF391D3A8489354D0349DEC203"
 deps_digest = "397E6A9F7A624706DBDFEE056CE88391A15876868FD18A88504DA74EB458D697"
 dependencies = [
   { id = "Bridge", name = "Bridge" },
@@ -45,7 +45,7 @@ dependencies = [
 
 [[move.package]]
 id = "WAL"
-source = { git = "https://github.com/MystenLabs/walrus.git", rev = "main", subdir = "testnet-contracts/wal" }
+source = { git = "https://github.com/MystenLabs/walrus.git", rev = "main", subdir = "mainnet-contracts/wal" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -53,7 +53,7 @@ dependencies = [
 
 [[move.package]]
 id = "Walrus"
-source = { git = "https://github.com/MystenLabs/walrus.git", rev = "main", subdir = "testnet-contracts/walrus" }
+source = { git = "https://github.com/MystenLabs/walrus.git", rev = "main", subdir = "mainnet-contracts/walrus" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -67,14 +67,8 @@ flavor = "sui"
 
 [env]
 
-[env.testnet]
-chain-id = "4c78adac"
-original-published-id = "0x2beaa1e54a1f683c46768421573390b4d14260af0c6995eac42889c4e955edae"
-latest-published-id = "0x2beaa1e54a1f683c46768421573390b4d14260af0c6995eac42889c4e955edae"
-published-version = "1"
-
-[env.sm-testnet]
-chain-id = "4c78adac"
-original-published-id = "0xa6bc9e5cf75d316ef209aaf5c59d613cb4ed69392fee2bcf4c13e67547396e62"
-latest-published-id = "0xa6bc9e5cf75d316ef209aaf5c59d613cb4ed69392fee2bcf4c13e67547396e62"
+[env.mainnet]
+chain-id = "35834a8a"
+original-published-id = "0x2c814fc2631b089760c7a6bef659dde62890709ecc58169e39bf5b60b0f2dbb7"
+latest-published-id = "0x2c814fc2631b089760c7a6bef659dde62890709ecc58169e39bf5b60b0f2dbb7"
 published-version = "1"
