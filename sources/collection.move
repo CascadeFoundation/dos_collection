@@ -62,7 +62,7 @@ public fun new<T: key>(
     (collection_metadata, collection_manager, collection_manager_admin_cap)
 }
 
-public(package) fun assert_is_authorized(
+public fun assert_is_authorized(
     manager_admin_cap: &CollectionManagerAdminCap,
     manager: &CollectionManager,
     metadata: &CollectionMetadata,
