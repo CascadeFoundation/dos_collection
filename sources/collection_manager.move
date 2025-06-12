@@ -2,19 +2,13 @@ module dos_collection::collection_manager;
 
 use std::string::String;
 use std::type_name::{Self, TypeName};
-use sui::coin::Coin;
 use sui::display;
 use sui::dynamic_field as df;
 use sui::event::emit;
 use sui::package;
 use sui::table::{Self, Table};
-use sui::transfer::Receiving;
 use sui::transfer_policy::TransferPolicy;
 use sui::vec_set::{Self, VecSet};
-use wal::wal::WAL;
-use walrus::blob::Blob;
-use walrus::storage_resource::Storage;
-use walrus::system::System;
 
 //=== Aliases ===
 
@@ -33,7 +27,7 @@ public struct CollectionManager has key, store {
     image_uri: String,
     state: CollectionState,
     items: Table<u64, ID>,
-    blobs: Table<u256, Option<Blob>>,
+    blobs: Table<u256, Option<ID>>,
     transfer_policies: VecSet<ID>,
 }
 
@@ -86,7 +80,6 @@ const EInvalidStateForAction: u64 = 30000;
 const ENotInitializedState: u64 = 30001;
 const ENotInitializationState: u64 = 30002;
 const EBlobNotReserved: u64 = 40000;
-const EBlobNotExpired: u64 = 40001;
 const EInvalidItemType: u64 = 50000;
 
 //=== Init Function ===
@@ -277,54 +270,6 @@ public fun unreserve_blob_slots(
     }
 }
 
-// Receive and store a Blob in the CollectionManager.
-public fun receive_and_store_blob(self: &mut CollectionManager, blob_to_receive: Receiving<Blob>) {
-    let blob = transfer::public_receive(&mut self.id, blob_to_receive);
-    let blob_id = blob.blob_id();
-    assert!(self.blobs.contains(blob_id), EBlobNotReserved);
-    self.blobs.borrow_mut(blob_id).fill(blob);
-}
-
-// Store a Blob in the CollectionManager.
-public fun store_blob(self: &mut CollectionManager, blob: Blob) {
-    let blob_id = blob.blob_id();
-    assert!(self.blobs.contains(blob_id), EBlobNotReserved);
-    self.blobs.borrow_mut(blob_id).fill(blob);
-}
-
-// Remove an expired Blob from the CollectionManager.
-public fun remove_blob(self: &mut CollectionManager, blob_id: u256, system: &System): Blob {
-    // Remove the Blob from the CollectionManager.
-    let old_blob = self.blobs.borrow_mut(blob_id).extract();
-    // Assert that the Blob is in or after its expiration epoch by comparing the current epoch to the Blob's end epoch.
-    assert!(system.epoch() >= old_blob.end_epoch(), EBlobNotExpired);
-    // Return the old Blob.
-    old_blob
-}
-
-// Extend a Blob's storage duration with a Storage resource.
-public fun extend_blob_with_storage(
-    self: &mut CollectionManager,
-    blob_id: u256,
-    storage: Storage,
-    system: &mut System,
-) {
-    let blob_mut = self.blobs.borrow_mut(blob_id).borrow_mut();
-    system.extend_blob_with_resource(blob_mut, storage);
-}
-
-// Extend a Blob's storage duration with WAL.
-public fun extend_blob_with_wal(
-    self: &mut CollectionManager,
-    blob_id: u256,
-    epochs: u32,
-    payment: &mut Coin<WAL>,
-    system: &mut System,
-) {
-    let blob_mut = self.blobs.borrow_mut(blob_id).borrow_mut();
-    system.extend_blob(blob_mut, epochs, payment);
-}
-
 // Destroy a CollectionManagerAdminCap.
 public fun collection_manager_admin_cap_destroy(
     cap: CollectionManagerAdminCap,
@@ -370,7 +315,7 @@ fun internal_unreserve_blob_slot(self: &mut CollectionManager, blob_id: u256) {
 
 //=== View Functions ===
 
-public fun blobs(self: &CollectionManager): &Table<u256, Option<Blob>> {
+public fun blobs(self: &CollectionManager): &Table<u256, Option<ID>> {
     &self.blobs
 }
 
